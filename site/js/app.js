@@ -79,8 +79,31 @@ function maxTicksFor(width) {
   return Math.max(4, Math.min(8, Math.floor(width / 64)));
 }
 
+/* Trinidad runs on UTC-4 with no daylight saving, so "today at the market"
+   is a fixed clock shift — no locale or timezone-database traps. */
+function trinidadToday() {
+  const t = new Date(Date.now() - 4 * 3600 * 1000);
+  return Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate());
+}
+
+/* Weekdays strictly between the report date and today. 0 is normal (today's
+   report just isn't due yet); 1+ means a whole market day passed with no
+   report — public holiday, market closure, or the data source is behind. */
+function missedMarketDays(reportIso) {
+  const today = trinidadToday();
+  let missed = 0;
+  for (let day = new Date(reportIso + "T00:00:00Z").getTime() + 86400000;
+       day < today; day += 86400000) {
+    const dow = new Date(day).getUTCDay();
+    if (dow >= 1 && dow <= 5) missed++;
+  }
+  return missed;
+}
+
 function init() {
-  fetch("data/summary.json")
+  // "no-cache" = revalidate with the server (a cheap 304 when unchanged),
+  // never trust heuristic caching — prices change every market day.
+  fetch("data/summary.json", { cache: "no-cache" })
     .then(function (r) {
       if (!r.ok) throw new Error("HTTP " + r.status);
       return r.json();
@@ -90,6 +113,7 @@ function init() {
       $("#report-date").textContent = "Prices for " + fmtDate(summary.report_date);
       $("#generated-at").textContent = "Page data generated " +
         new Date(summary.generated_at).toLocaleString("en-TT") + ".";
+      renderStaleNote();
       initChips();
       renderMovers();
       renderList();
@@ -97,12 +121,59 @@ function init() {
         state.query = e.target.value.trim().toLowerCase();
         renderList();
       });
+      // Shared links land here: #carrot opens the carrot panel directly.
+      applyHash();
+      window.addEventListener("hashchange", applyHash);
     })
     .catch(function () {
       $("#report-date").innerHTML =
         'Couldn’t load today’s prices — please check your ' +
         'connection and <a href="" style="color:#fff">try again</a>.';
     });
+}
+
+function renderStaleNote() {
+  const missed = missedMarketDays(summary.report_date);
+  if (missed < 1) return;
+  const note = $("#stale-note");
+  note.hidden = false;
+  note.textContent = "That report is " + missed + " market day" +
+    (missed === 1 ? "" : "s") + " old — the market may have been closed " +
+    "(public holiday), or no newer report has been published yet. " +
+    "These are the latest prices available.";
+}
+
+/* Make an item visible (clearing any search/filter that hides it), open its
+   detail panel, and scroll it into view. Used by mover cards and #hash links. */
+function revealItem(id) {
+  // Check the id is real BEFORE touching anything: a junk hash (mistyped
+  // shared link) must not wipe the visitor's search or category filter.
+  const known = summary.commodities.some(function (c) { return c.id === id; });
+  if (!known) return;
+  let row = document.getElementById("item-" + id);
+  if (!row) {
+    state.query = "";
+    state.category = null;
+    $("#search").value = "";
+    initChips();
+    renderList();
+    row = document.getElementById("item-" + id);
+  }
+  if (!row) return;
+  const btn = row.querySelector(".item-row");
+  if (btn.getAttribute("aria-expanded") !== "true") btn.click();
+  // Hand keyboard/screen-reader focus to the row, so a shared link is
+  // announced (name, price, expanded state) instead of leaving focus
+  // stranded at the top of the page. Old browsers that don't understand
+  // preventScroll just focus-and-jump, which is fine.
+  btn.focus({ preventScroll: true });
+  row.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function applyHash() {
+  let id = "";
+  try { id = decodeURIComponent(location.hash.slice(1)); } catch (e) { return; }
+  if (id) revealItem(id);
 }
 
 function initChips() {
@@ -142,18 +213,7 @@ function renderMovers() {
     el.className = "mover";
     el.innerHTML = "<b>" + esc(c.name) + "</b>" + changeBadge(c) +
       " " + fmtPrice(c.price) + " / " + esc(c.unit);
-    el.addEventListener("click", function () {
-      state.query = "";
-      state.category = null;
-      $("#search").value = "";
-      initChips();
-      renderList();
-      const row = document.getElementById("item-" + c.id);
-      if (row) {
-        row.querySelector(".item-row").click();
-        row.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
-    });
+    el.addEventListener("click", function () { revealItem(c.id); });
     box.appendChild(el);
   });
 }
@@ -178,6 +238,14 @@ function changeBadge(c) {
   }
   return ' <span class="chg same" role="img" aria-label="unchanged since ' +
     'last market day">●</span>';
+}
+
+/* "low/high for the year" pill. Quiet by design: a typical price gets no
+   pill (most items most days), so the pills that do appear mean something. */
+function levelBadge(c) {
+  if (c.price_level !== "low" && c.price_level !== "high") return "";
+  return '<div class="level ' + c.price_level + '">' + c.price_level +
+    " for the year</div>";
 }
 
 function matches(c) {
@@ -228,7 +296,8 @@ function renderItem(c) {
   let priceHtml;
   if (c.price !== null) {
     priceHtml = '<div class="price-now">' + fmtPrice(c.price) + "</div>" +
-      '<div class="price-unit">per ' + esc(c.unit) + changeBadge(c) + "</div>";
+      '<div class="price-unit">per ' + esc(c.unit) + changeBadge(c) + "</div>" +
+      levelBadge(c);
   } else {
     // traded=true with no price happens: some items sell on volume with no
     // posted price that day.
@@ -272,7 +341,7 @@ function loadChartJs() {
 function loadHistory() {
   if (history) return Promise.resolve(history);
   if (!historyPromise) {
-    historyPromise = fetch("data/history.json")
+    historyPromise = fetch("data/history.json", { cache: "no-cache" })
       .then(function (r) {
         if (!r.ok) throw new Error("HTTP " + r.status);
         return r.json();
@@ -300,28 +369,50 @@ function toggleDetail(div, c) {
     const d = div.querySelector(".detail");
     if (d) d.remove();
     btn.setAttribute("aria-expanded", "false");
+    // Only un-claim the address bar if this item is the one it points at.
+    // window.history, NOT history — our price-history variable shadows it.
+    if (location.hash === "#" + encodeURIComponent(c.id)) {
+      window.history.replaceState(null, "", location.pathname + location.search);
+    }
     return;
   }
   btn.setAttribute("aria-expanded", "true");
+  // replaceState (not location.hash=) so opening items doesn't bury the
+  // visitor's back button under one history entry per tap.
+  window.history.replaceState(null, "", "#" + encodeURIComponent(c.id));
 
   const detail = document.createElement("div");
   detail.className = "detail";
-  const facts = c.volume !== null
-    ? "Volume today: " + c.volume.toLocaleString() + " " + esc(c.unit)
+  let facts = c.volume !== null
+    ? "Volume today: " + c.volume.toLocaleString() + " " + esc(c.unit) + "."
     : "No volume recorded today.";
+  if (typeof c.year_low === "number" && typeof c.year_high === "number") {
+    // "Monthly averages ranged", not "prices ranged": today's daily price
+    // can legitimately sit outside the band, and on ~17 of 77 items it
+    // does — wording that claims a hard range would look like broken data.
+    facts += " Monthly averages over the past year ranged " +
+      fmtPrice(c.year_low) + "–" + fmtPrice(c.year_high) +
+      (c.price_level
+        ? " — today’s price is " + esc(c.price_level) + " for the year."
+        : ".");
+  }
   detail.innerHTML =
     '<p class="facts">' + facts + "</p>" +
     '<div class="ranges" role="group" aria-label="Chart range"></div>' +
     '<div class="chart-box"><canvas role="img" aria-label="Price history ' +
     "chart for " + esc(c.name) + '"></canvas></div>' +
-    '<p class="chart-note"></p>';
+    '<p class="chart-note"></p>' +
+    '<div class="seasonality" hidden></div>';
   div.appendChild(detail);
 
   Promise.all([loadHistory(), loadChartJs()])
     .then(function () {
       // The visitor may have collapsed the panel or searched (wiping the
       // list) while we were fetching.
-      if (detail.isConnected) buildRanges(detail, c);
+      if (detail.isConnected) {
+        buildRanges(detail, c);
+        renderSeasonality(detail, c);
+      }
     })
     .catch(function () {
       if (detail.isConnected) {
@@ -365,6 +456,97 @@ function buildRanges(detail, c) {
     box.appendChild(b);
   });
   drawChart(detail, c, ranges[0]);
+}
+
+/* Average each calendar month against its own year's mean, so 2008 and 2026
+   can sit in the same average without two decades of inflation drowning the
+   seasonal signal. Lenient on purpose: a crop like sorrel only trades
+   Oct–Jan, so short years and permanently-empty months are its normal
+   shape, not bad data — the real noise filter is requiring each month to
+   appear in 3+ years. Returns { months: 12 relative values (null where data
+   is thin), years: how many years contributed }, or null when there isn't
+   enough history to call anything a pattern. */
+function seasonalProfile(monthly) {
+  const byYear = {};
+  Object.keys(monthly).forEach(function (key) {
+    const year = key.slice(0, 4);
+    if (!byYear[year]) byYear[year] = [];
+    byYear[year].push({ month: Number(key.slice(5, 7)) - 1, price: monthly[key] });
+  });
+  const ratios = [];
+  for (let m = 0; m < 12; m++) ratios.push([]);
+  let years = 0;
+  Object.keys(byYear).forEach(function (year) {
+    const months = byYear[year];
+    if (months.length < 4) return;   // too few months to anchor a mean
+    let sum = 0;
+    months.forEach(function (x) { sum += x.price; });
+    const mean = sum / months.length;
+    if (!mean) return;
+    years++;
+    months.forEach(function (x) { ratios[x.month].push(x.price / mean); });
+  });
+  const profile = ratios.map(function (list) {
+    if (list.length < 3) return null;  // one odd year isn't a pattern
+    let sum = 0;
+    list.forEach(function (r) { sum += r; });
+    return sum / list.length;
+  });
+  const known = profile.filter(function (x) { return x !== null; });
+  if (known.length < 4) return null;
+  return { months: profile, years: years };
+}
+
+function renderSeasonality(detail, c) {
+  const result = seasonalProfile((history[c.id] || {}).monthly || {});
+  if (!result) return;
+  const profile = result.months;
+  const known = profile.filter(function (x) { return x !== null; });
+  const min = Math.min.apply(null, known);
+  const max = Math.max.apply(null, known);
+
+  const flat = max - min < 0.08;   // under ~8% swing isn't worth chasing
+  let text;
+  if (flat) {
+    text = esc(c.name) + " costs about the same all year round.";
+  } else {
+    text = "Usually cheapest in " + MONTHS_LONG[profile.indexOf(min)] +
+      ", priciest in " + MONTHS_LONG[profile.indexOf(max)] + ".";
+  }
+  if (known.length < 12) {
+    text += " Months without a bar are when it’s rarely sold.";
+  }
+
+  const box = detail.querySelector(".seasonality");
+  box.hidden = false;
+  box.innerHTML =
+    '<h3 class="season-head">Best time to buy</h3>' +
+    '<p class="season-text">' + text + " Based on " + result.years +
+    " years of monthly averages.</p>" +
+    '<div class="season-bars" role="img" aria-label="Seasonal price ' +
+    'pattern. ' + text + '"></div>' +
+    '<div class="season-letters" aria-hidden="true"></div>';
+
+  const bars = box.querySelector(".season-bars");
+  const letters = box.querySelector(".season-letters");
+  profile.forEach(function (r, m) {
+    const bar = document.createElement("div");
+    bar.className = "season-bar";
+    if (r === null) {
+      bar.className += " none";
+    } else {
+      // Flat profiles still get mid-height bars instead of a 0-to-100
+      // exaggeration: scale relative to ±15% around the yearly mean.
+      const h = Math.max(8, Math.min(100, ((r - 0.85) / 0.3) * 100));
+      bar.style.height = h.toFixed(0) + "%";
+      if (!flat && r === min) bar.className += " cheap";
+      if (!flat && r === max) bar.className += " dear";
+    }
+    bars.appendChild(bar);
+    const letter = document.createElement("span");
+    letter.textContent = "JFMAMJJASOND".charAt(m);
+    letters.appendChild(letter);
+  });
 }
 
 function drawChart(detail, c, range) {

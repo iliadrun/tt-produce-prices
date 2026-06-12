@@ -50,6 +50,16 @@ body {
 .tagline { margin: 6px 0 0; opacity: 0.92; font-size: 0.95rem; }
 .report-date { margin: 10px 0 0; font-weight: 600; font-size: 1rem; }
 
+/* Amber "data is older than it should be" note under the report date. */
+.stale-note {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #fff3cd;
+  color: #6b5200;
+  font-size: 0.85rem;
+}
+
 /* ---------- movers strip ---------- */
 .movers {
   display: flex;
@@ -148,6 +158,19 @@ body {
 .chg.down { color: var(--down); }
 .chg.same { color: var(--same); }
 
+/* "low/high for the year" pill under a price. Green is shopper's good news. */
+.level {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.level.low { background: #e3f2e8; color: var(--green-dark); }
+.level.high { background: #fbe9e7; color: #8c2d22; }
+
 /* ---------- expanded detail ---------- */
 .detail { border-top: 1px solid var(--line); padding: 12px 14px; }
 .detail .facts { color: var(--ink-soft); font-size: 0.88rem; margin: 0 0 10px; }
@@ -165,6 +188,28 @@ body {
 .range-btn[aria-pressed="true"] { background: var(--green); border-color: var(--green); color: #fff; }
 .chart-box { position: relative; height: 220px; }
 .chart-note { color: var(--ink-soft); font-size: 0.78rem; margin: 8px 0 0; }
+
+/* ---------- seasonality ("best time to buy") ---------- */
+.seasonality { margin-top: 16px; }
+.season-head { margin: 0 0 2px; font-size: 0.88rem; }
+.season-text { color: var(--ink-soft); font-size: 0.82rem; margin: 0 0 8px; }
+.season-bars { display: flex; gap: 3px; align-items: flex-end; height: 52px; }
+.season-bar {
+  flex: 1;
+  background: #c5d6ca;
+  border-radius: 3px 3px 0 0;
+  min-height: 3px;
+}
+.season-bar.none { height: 3px; background: var(--line); }
+.season-bar.cheap { background: var(--green); }
+.season-bar.dear { background: var(--up); }
+.season-letters { display: flex; gap: 3px; margin-top: 3px; }
+.season-letters span {
+  flex: 1;
+  text-align: center;
+  font-size: 0.65rem;
+  color: var(--ink-soft);
+}
 
 /* ---------- footer ---------- */
 .empty { color: var(--ink-soft); text-align: center; padding: 30px 0; }

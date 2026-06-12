@@ -30,6 +30,19 @@ def load(path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def percentile(sorted_vals, q):
+    """Linear-interpolated percentile of an ascending list, q in [0, 1]."""
+    pos = q * (len(sorted_vals) - 1)
+    lo = int(pos)
+    hi = min(lo + 1, len(sorted_vals) - 1)
+    return sorted_vals[lo] + (sorted_vals[hi] - sorted_vals[lo]) * (pos - lo)
+
+
+def month_index(date_key):
+    """Months since year 0 for a 'YYYY-MM' or 'YYYY-MM-DD' key."""
+    return int(date_key[:4]) * 12 + int(date_key[5:7])
+
+
 def main():
     daily_files = sorted((DATA_DIR / "daily").glob("*.json"))
     if not daily_files:
@@ -46,6 +59,18 @@ def main():
                 cid = c["commodity_id"]
                 daily_series.setdefault(cid, {})[report["report_date"]] = c["price"]
                 last_traded[cid] = {"date": report["report_date"], "price": c["price"]}
+
+    # Monthly averages re-keyed to the daily report's ids, loaded before the
+    # board is built so each commodity can carry its own past-year context.
+    aliases = load(DATA_DIR / "commodity_aliases.json")["history_to_daily"]
+    latest_ids = {c["commodity_id"] for c in latest["commodities"]}
+    monthly_by_id = {}
+    for s in load(DATA_DIR / "history" / "monthly_wholesale_avg.json")["series"]:
+        cid = aliases.get(s["commodity_id"], s["commodity_id"])
+        if cid in latest_ids:
+            # The site's 1Y/5Y chart windows slice the last N keys, so
+            # chronological order is a hard requirement, not a nicety.
+            monthly_by_id[cid] = dict(sorted(s["monthly_avg_price"].items()))
 
     commodities = []
     for c in latest["commodities"]:
@@ -64,6 +89,30 @@ def main():
         lt = last_traded.get(cid)
         if lt and c["price"] is None:
             entry["last_traded"] = lt
+        # Past-year context: where today's price sits among the last 12
+        # published monthly averages (the monthly source lags a few months,
+        # so this is "the most recent year on record"). Quartile thresholds
+        # rather than min/max, so one freak month doesn't define "normal".
+        # Guarded against dead or gappy series: the window must end near the
+        # report date and fit inside ~14 calendar months — without this,
+        # ginger (whose monthly series stopped in 2024) wears a "low for
+        # the year" badge computed entirely from old data.
+        months = sorted(monthly_by_id.get(cid, {}).items())[-12:]
+        window_ok = (
+            len(months) >= 6
+            and month_index(latest["report_date"]) - month_index(months[-1][0]) <= 6
+            and month_index(months[-1][0]) - month_index(months[0][0]) <= 13
+        )
+        if c["price"] is not None and window_ok:
+            vals = sorted(v for _, v in months)
+            entry["year_low"] = round(vals[0], 2)
+            entry["year_high"] = round(vals[-1], 2)
+            if c["price"] <= percentile(vals, 0.25):
+                entry["price_level"] = "low"
+            elif c["price"] >= percentile(vals, 0.75):
+                entry["price_level"] = "high"
+            else:
+                entry["price_level"] = "typical"
         commodities.append(entry)
 
     summary = {
@@ -78,16 +127,8 @@ def main():
         "commodities": commodities,
     }
 
-    # History: monthly averages keyed by the daily report's ids.
-    aliases = load(DATA_DIR / "commodity_aliases.json")["history_to_daily"]
-    daily_ids = {c["id"] for c in commodities}
-    history = {}
-    for s in load(DATA_DIR / "history" / "monthly_wholesale_avg.json")["series"]:
-        cid = aliases.get(s["commodity_id"], s["commodity_id"])
-        if cid in daily_ids:
-            # The site's 1Y/5Y chart windows slice the last N keys, so
-            # chronological order is a hard requirement, not a nicety.
-            history[cid] = {"monthly": dict(sorted(s["monthly_avg_price"].items()))}
+    # History: the monthly series loaded above, plus the daily series.
+    history = {cid: {"monthly": monthly} for cid, monthly in monthly_by_id.items()}
     for cid, series in daily_series.items():
         history.setdefault(cid, {})["daily"] = dict(sorted(series.items()))
 
