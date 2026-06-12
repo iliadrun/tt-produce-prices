@@ -311,22 +311,24 @@ function levelBadge(c) {
     LEVEL_WORDS[c.price_level] + "</div>";
 }
 
-/* "In shops and markets" — the monthly NAMDEVCO retail survey, shown as a
-   plain sentence inside the open panel. The survey month rides inside the
-   sentence so the freshness caveat can't be skimmed past, and the wording
-   never implies a wholesale comparison for items the data can't honestly
-   compare (the build only emits per-Kg retail where both sides weigh). */
+/* "In shops and markets" — the monthly NAMDEVCO retail survey, shown as
+   its own short paragraph inside the open panel (sharing the wholesale
+   facts paragraph read as information whiplash). The survey month rides
+   inside the sentence so the freshness caveat can't be skimmed past, and
+   the wording never implies a wholesale comparison for items the data
+   can't honestly compare (the build only emits per-Kg retail where both
+   sides weigh). */
 const OUTLET_NAMES = {
   farmers_markets: "farmers’ markets",
   municipal_markets: "municipal markets",
   vege_marts: "vege-marts",
   supermarkets: "supermarkets",
 };
-/* Retail items are priced as published — per lb, each, per bundle… The
-   bundle/pack sizes are NAMDEVCO's, unknown to us, so no unit conversion. */
-const RETAIL_UNIT_WORDS = {
-  "lb": "per lb", "Each": "each", "Bundle": "per bundle",
-  "Head": "per head", "Pack": "per pack",
+/* Leading with the thing being priced ("a pack typically costs…") is what
+   makes counted units self-explanatory: a pack or bundle is NAMDEVCO's
+   size, not a weight, so the Kg/lb toggle can't apply to it. */
+const RETAIL_UNIT_NOUNS = {
+  "Each": "each one", "Bundle": "a bundle", "Head": "a head", "Pack": "a pack",
 };
 
 function monthsApart(ym, laterYmd) {
@@ -339,26 +341,33 @@ function retailSentence(c) {
   if (!r || !summary.retail_month) return "";
   const monthLabel = MONTHS_LONG[summary.retail_month.split("-")[1] - 1] +
     " " + summary.retail_month.slice(0, 4);
-  // Per-Kg retail follows the visitor's Kg/lb toggle like every other
-  // weighed price; "native" units (each, bundle…) show as published.
-  const kg = r.kind === "kg";
-  const fmt = function (v) { return fmtPrice(kg ? displayPrice(c, v) : v); };
-  const unitWord = kg
-    ? "per " + esc(displayUnit(c))
-    : (RETAIL_UNIT_WORDS[r.unit] || "per " + esc(r.unit));
+  // Weighed retail follows the visitor's Kg/lb toggle — including items
+  // the survey prices per lb while the market sells by bundle or count
+  // (kind "native", unit "lb"): a pound is a weight wherever it appears.
+  const weighed = r.kind === "kg" || r.unit === "lb";
+  const fmt = function (v) {
+    if (!weighed) return fmtPrice(v);
+    const perLbVal = r.kind === "kg" ? v / LB_PER_KG : v;
+    return fmtPrice(state.perLb ? perLbVal : perLbVal * LB_PER_KG);
+  };
+  const noun = weighed
+    ? (state.perLb ? "a pound" : "a kilo")
+    : (RETAIL_UNIT_NOUNS[r.unit] || "a " + esc(String(r.unit).toLowerCase()));
 
   let s;
   if (r.wide) {
-    // Outlets disagree too much for one number to be honest.
-    s = "In shops and markets it varies a lot: from " + fmt(r.cheap.price) +
-      " " + unitWord + " at " + OUTLET_NAMES[r.cheap.at] + " to " +
+    // Outlets disagree too much for one "typical" number to be honest.
+    s = "In shops and markets, " + noun + " can cost anywhere from " +
+      fmt(r.cheap.price) + " at " + OUTLET_NAMES[r.cheap.at] + " to " +
       fmt(r.dear.price) + " at " + OUTLET_NAMES[r.dear.at] + ".";
   } else if (r.cheap && r.dear) {
-    s = "In shops and markets: about " + fmt(r.price) + " " + unitWord +
-      " — from " + fmt(r.cheap.price) + " at " + OUTLET_NAMES[r.cheap.at] +
-      " to " + fmt(r.dear.price) + " at " + OUTLET_NAMES[r.dear.at] + ".";
+    s = "In shops and markets, " + noun + " typically costs around " +
+      fmt(r.price) + ", ranging from " + fmt(r.cheap.price) + " at " +
+      OUTLET_NAMES[r.cheap.at] + " to " + fmt(r.dear.price) + " at " +
+      OUTLET_NAMES[r.dear.at] + ".";
   } else {
-    s = "In shops and markets: about " + fmt(r.price) + " " + unitWord + ".";
+    s = "In shops and markets, " + noun + " typically costs around " +
+      fmt(r.price) + ".";
   }
   s += " NAMDEVCO shop survey, " + monthLabel + ".";
   if (monthsApart(summary.retail_month, summary.report_date) >= 2) {
@@ -523,9 +532,9 @@ function toggleDetail(div, c) {
         : ".");
   }
   const shops = retailSentence(c);
-  if (shops) facts += " " + shops;
   detail.innerHTML =
     '<p class="facts">' + facts + "</p>" +
+    (shops ? '<p class="facts">' + shops + "</p>" : "") +
     '<div class="ranges" role="group" aria-label="Chart range"></div>' +
     '<div class="chart-box"><canvas role="img" aria-label="Price history ' +
     "chart for " + esc(c.name) + '"></canvas></div>' +
