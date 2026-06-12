@@ -1,4 +1,4 @@
-# Runs on GitHub's servers — fetches new NAMIS reports, commits the data,
+﻿# Runs on GitHub's servers - fetches new NAMIS reports, commits the data,
 # and redeploys the website. Two schedules: the main run after reports land
 # (~2:30 pm Trinidad at the latest), and a next-morning retry that also
 # heals any day the main run missed (the 10-day fetch window re-checks
@@ -27,9 +27,9 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -54,15 +54,15 @@ jobs:
           fi
 
       - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
         with:
           enablement: true
 
       - name: Upload site
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
