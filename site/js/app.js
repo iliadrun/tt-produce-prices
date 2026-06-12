@@ -240,12 +240,22 @@ function changeBadge(c) {
     'last market day">●</span>';
 }
 
-/* "low/high for the year" pill. Quiet by design: a typical price gets no
-   pill (most items most days), so the pills that do appear mean something. */
+/* The data values stay "low"/"high"/"typical" (they're also the CSS
+   hooks); the visible words deliberately avoid any time reference —
+   "for the year" kept being read as "this calendar year". The badge is
+   quartile-based, so "than usual" is also the more honest claim. */
+const LEVEL_WORDS = {
+  low: "cheaper than usual",
+  high: "costlier than usual",
+  typical: "typical",
+};
+
+/* Price-context pill. Quiet by design: a typical price gets no pill (most
+   items most days), so the pills that do appear mean something. */
 function levelBadge(c) {
   if (c.price_level !== "low" && c.price_level !== "high") return "";
-  return '<div class="level ' + c.price_level + '">' + c.price_level +
-    " for the year</div>";
+  return '<div class="level ' + c.price_level + '">' +
+    LEVEL_WORDS[c.price_level] + "</div>";
 }
 
 function matches(c) {
@@ -390,10 +400,10 @@ function toggleDetail(div, c) {
     // "Monthly averages ranged", not "prices ranged": today's daily price
     // can legitimately sit outside the band, and on ~17 of 77 items it
     // does — wording that claims a hard range would look like broken data.
-    facts += " Monthly averages over the past year ranged " +
+    facts += " Monthly averages over the past 12 months ranged " +
       fmtPrice(c.year_low) + "–" + fmtPrice(c.year_high) +
-      (c.price_level
-        ? " — today’s price is " + esc(c.price_level) + " for the year."
+      (LEVEL_WORDS[c.price_level]
+        ? " — today’s price is " + LEVEL_WORDS[c.price_level] + "."
         : ".");
   }
   detail.innerHTML =
