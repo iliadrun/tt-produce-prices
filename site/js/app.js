@@ -586,6 +586,16 @@ function renderSeasonality(detail, c) {
     text += " Months without a bar are when it’s rarely sold.";
   }
 
+  /* Tooltip/aria phrasing for one month's relative price (null = no data). */
+  function monthHint(r) {
+    if (r === null) return "rarely sold";
+    const pct = Math.round((r - 1) * 100);
+    if (pct > 1) return "usually about " + pct + "% above the year’s average";
+    if (pct < -1) return "usually about " + -pct + "% below the year’s average";
+    return "usually about average";
+  }
+
+  const nowMonth = new Date().getMonth();
   const box = detail.querySelector(".seasonality");
   box.hidden = false;
   box.innerHTML =
@@ -593,7 +603,8 @@ function renderSeasonality(detail, c) {
     '<p class="season-text">' + text + " Based on " + result.years +
     " years of monthly averages.</p>" +
     '<div class="season-bars" role="img" aria-label="Seasonal price ' +
-    'pattern. ' + text + '"></div>' +
+    'pattern. ' + text + " Current month: " + MONTHS_LONG[nowMonth] +
+    ", " + monthHint(profile[nowMonth]) + '."></div>' +
     '<div class="season-letters" aria-hidden="true"></div>';
 
   const bars = box.querySelector(".season-bars");
@@ -611,9 +622,17 @@ function renderSeasonality(detail, c) {
       if (!flat && r === min) bar.className += " cheap";
       if (!flat && r === max) bar.className += " dear";
     }
+    bar.title = MONTHS_LONG[m] +
+      (m === nowMonth ? " (this month): " : ": ") + monthHint(r);
     bars.appendChild(bar);
     const letter = document.createElement("span");
-    letter.textContent = "JFMAMJJASOND".charAt(m);
+    // Inner .lab exists so the current-month pill can hug the text instead
+    // of stretching across the whole flex column; .rest is the collapsible
+    // remainder narrow screens hide in CSS, falling back to a
+    // J F M A M J… strip instead of colliding.
+    letter.innerHTML = '<span class="lab">' + MONTHS_SHORT[m].charAt(0) +
+      '<span class="rest">' + MONTHS_SHORT[m].slice(1) + "</span></span>";
+    if (m === nowMonth) letter.className = "now";
     letters.appendChild(letter);
   });
 }

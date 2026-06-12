@@ -237,11 +237,31 @@ body {
 .season-bar.cheap { background: var(--green); }
 .season-bar.dear { background: var(--up); }
 .season-letters { display: flex; gap: 3px; margin-top: 3px; }
-.season-letters span {
+/* Direct children only: the inner .lab/.rest spans must inherit, not
+   re-match, or the pill's white text gets overridden back to ink-soft.
+   min-width: 0 keeps all 12 columns equal when the pill's min-content
+   width exceeds its share — the pill bleeds ~1px into the gutters
+   instead of shoving the other labels off their bars. */
+.season-letters > span {
   flex: 1;
+  min-width: 0;
   text-align: center;
   font-size: 0.65rem;
   color: var(--ink-soft);
+}
+/* "You are here" pill under the current month's bar. Neutral dark on
+   purpose: green/red already mean cheap/dear in the bars above, and the
+   current month is a position, not a price signal. */
+.season-letters span.now .lab {
+  background: var(--ink);
+  color: #fff;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 1px 4px;
+}
+/* Twelve "Jan"-style labels get cramped below ~370px; drop to initials. */
+@media (max-width: 369px) {
+  .season-letters .rest { display: none; }
 }
 
 /* ---------- footer ---------- */
