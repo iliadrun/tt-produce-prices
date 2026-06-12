@@ -21,6 +21,7 @@ Usage:
 
 import argparse
 import sys
+import time
 import urllib.error
 import urllib.request
 from datetime import date, datetime, timedelta, timezone
@@ -109,8 +110,14 @@ def main():
         dates = [today]
 
     failures = 0
+    hit_server_last_time = False
     for d in dates:
+        # Pause between consecutive server hits so a long catch-up range
+        # doesn't burst-download; cached dates skip the server entirely.
+        if hit_server_last_time:
+            time.sleep(2)
         status = fetch_report(d, force=args.force)
+        hit_server_last_time = status != "cached"
         print(f"{d.isoformat()} ({d.strftime('%a')}): {status}")
         if status.startswith("error"):
             failures += 1
