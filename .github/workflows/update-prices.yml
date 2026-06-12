@@ -1,0 +1,68 @@
+# Runs on GitHub's servers — fetches new NAMIS reports, commits the data,
+# and redeploys the website. Two schedules: the main run after reports land
+# (~2:30 pm Trinidad at the latest), and a next-morning retry that also
+# heals any day the main run missed (the 10-day fetch window re-checks
+# recent gaps every time).
+name: Update prices and deploy
+
+on:
+  schedule:
+    - cron: "30 19 * * 1-5"   # 3:30 pm Trinidad time (UTC-4), Mon-Fri
+    - cron: "0 11 * * 2-6"    # 7:00 am Trinidad, Tue-Sat (retry/catch-up)
+  workflow_dispatch:           # the manual "Run workflow" button
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: update-prices
+  cancel-in-progress: false
+
+jobs:
+  update-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Fetch any new reports
+        run: python scraper/fetch_daily.py --since "$(date -d '10 days ago' +%F)"
+
+      - name: Commit new data and rebuild site files
+        run: |
+          git add data
+          if ! git diff --cached --quiet; then
+            python scraper/build_site_data.py
+            git add data site/data
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "Price data update $(date -u +%F)"
+            git push
+          else
+            echo "No new data today."
+          fi
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

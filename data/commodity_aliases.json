@@ -1,0 +1,43 @@
+{
+  "description": "Bridges commodity_id spelling differences between the two NAMIS sources. The daily report's ids are canonical (it is the live, ongoing source); history_to_daily maps the historical workbook's ids onto them. Only confident same-produce pairs are mapped; ids absent here simply have no counterpart.",
+  "history_to_daily": {
+    "amarantus-spp-spinach": "spinach-amarantus-spp",
+    "bodi-beans": "bodi-bean",
+    "carrots": "carrot",
+    "common-yam": "yam-local",
+    "dry-coconut-l": "coconut-dry-l",
+    "dry-coconut-m": "coconut-dry-m",
+    "dry-coconut-s": "coconut-dry-s",
+    "eddoes-imported": "eddoe-imported",
+    "eddoes-local": "eddoe-local",
+    "hot-peppers-100-s": "hot-pepper-100-s",
+    "hot-peppers-40-lb": "hot-pepper-40-lb",
+    "imported-yam": "yam-imported",
+    "king-orange": "orange-king",
+    "limes-l": "lime-l",
+    "limes-m": "lime-m",
+    "limes-s": "lime-s",
+    "navel-orange": "orange-navel",
+    "oranges-l": "orange-l",
+    "oranges-m": "orange-m",
+    "oranges-s": "orange-s",
+    "pigeon-peas": "pigeon-pea",
+    "seim-beans": "seim-bean",
+    "sweet-potatoes-imported": "sweet-potato-imported",
+    "sweet-potatoes-local": "sweet-potato-local"
+  },
+  "deliberately_unmapped": {
+    "banana-imported": "history-only; daily has banana-ripe instead — unclear if same produce, do not guess",
+    "banana-ripe": "daily-only; see banana-imported",
+    "sweet-corn": "history 2009-2015, sold per 'each' — unit change makes joining to later corn series invalid",
+    "corn": "history 2016-2021, per 100's; discontinued series",
+    "corn-sweet": "history 2025+, per 100's; successor listing, no daily counterpart yet",
+    "corn-green": "history 2025+, per 100's; no daily counterpart yet",
+    "ginger-local": "history 2025+ split of plain 'ginger'; daily still lists unsplit 'Ginger'",
+    "ginger-imported": "history 2025+ split of plain 'ginger'; daily still lists unsplit 'Ginger'",
+    "pimento-l-20lb": "new 20lb pack listing, coexists with per-100's pimento — different product",
+    "pimento-m-20lb": "new 20lb pack listing — different product",
+    "pimento-s-20lb": "new 20lb pack listing — different product",
+    "corn-categorized-as-citrus": "NOTE: all corn series carry category 'Citrus' — faithful to the source sheets but botanically wrong; do not trust category for corn"
+  }
+}

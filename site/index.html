@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T&amp;T Produce Prices — wholesale market prices for Trinidad and Tobago</title>
+<meta name="description" content="Daily wholesale produce prices from the Norris Deonarine Northern Wholesale Market, Macoya, Trinidad and Tobago. Data from NAMDEVCO's NAMIS.">
+<link rel="stylesheet" href="css/style.css">
+<!-- Chart.js is loaded lazily by app.js the first time a chart opens, so a
+     slow or blocked CDN can never delay the price board itself. -->
+<script src="js/app.js" defer></script>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap">
+    <h1>🥕 T&amp;T Produce Prices</h1>
+    <p class="tagline">Wholesale prices from the Norris Deonarine Northern Wholesale Market, Macoya</p>
+    <p class="report-date" id="report-date">Loading…</p>
+  </div>
+</header>
+
+<main class="wrap">
+  <section id="movers" class="movers" hidden aria-label="Today's biggest price moves"></section>
+
+  <div class="controls">
+    <input type="search" id="search" placeholder="Search produce — tomato, yam, fig…"
+           aria-label="Search produce" autocomplete="off">
+    <div class="chips" id="chips" role="group" aria-label="Filter by category"></div>
+  </div>
+
+  <p class="legend">
+    <span class="chg up">▲</span> costlier than last market day
+    &nbsp;·&nbsp; <span class="chg down">▼</span> cheaper
+    &nbsp;·&nbsp; <span class="chg same">●</span> unchanged
+    &nbsp;·&nbsp; <span class="chg same">–</span> no comparison
+  </p>
+
+  <p id="status" class="sr-only" aria-live="polite"></p>
+  <div id="list"></div>
+  <p id="empty" class="empty" hidden>Nothing matches that search.</p>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <p>Prices and volumes are collected and published by
+      <a href="https://www.namistt.com" rel="noopener">NAMIS</a>, a service of
+      NAMDEVCO (the National Agricultural Marketing and Development Corporation
+      of Trinidad and Tobago). This is an independent, free, non-commercial
+      presentation of that public data — always confirm prices at the market.</p>
+    <p>Prices are <strong>wholesale</strong> (what vendors pay at Macoya), in
+      Trinidad and Tobago dollars. Retail prices at markets and groceries will
+      be higher.</p>
+    <p id="generated-at"></p>
+  </div>
+</footer>
+
+</body>
+</html>

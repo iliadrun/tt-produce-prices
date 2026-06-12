@@ -1,0 +1,7 @@
+# Python
+__pycache__/
+*.pyc
+
+# One-off research artifacts from the initial namistt.com recon
+namis_*.html
+namis_*.doc
