@@ -311,6 +311,62 @@ function levelBadge(c) {
     LEVEL_WORDS[c.price_level] + "</div>";
 }
 
+/* "In shops and markets" — the monthly NAMDEVCO retail survey, shown as a
+   plain sentence inside the open panel. The survey month rides inside the
+   sentence so the freshness caveat can't be skimmed past, and the wording
+   never implies a wholesale comparison for items the data can't honestly
+   compare (the build only emits per-Kg retail where both sides weigh). */
+const OUTLET_NAMES = {
+  farmers_markets: "farmers’ markets",
+  municipal_markets: "municipal markets",
+  vege_marts: "vege-marts",
+  supermarkets: "supermarkets",
+};
+/* Retail items are priced as published — per lb, each, per bundle… The
+   bundle/pack sizes are NAMDEVCO's, unknown to us, so no unit conversion. */
+const RETAIL_UNIT_WORDS = {
+  "lb": "per lb", "Each": "each", "Bundle": "per bundle",
+  "Head": "per head", "Pack": "per pack",
+};
+
+function monthsApart(ym, laterYmd) {
+  return (parseInt(laterYmd.slice(0, 4), 10) * 12 + parseInt(laterYmd.slice(5, 7), 10))
+    - (parseInt(ym.slice(0, 4), 10) * 12 + parseInt(ym.slice(5, 7), 10));
+}
+
+function retailSentence(c) {
+  const r = c.retail;
+  if (!r || !summary.retail_month) return "";
+  const monthLabel = MONTHS_LONG[summary.retail_month.split("-")[1] - 1] +
+    " " + summary.retail_month.slice(0, 4);
+  // Per-Kg retail follows the visitor's Kg/lb toggle like every other
+  // weighed price; "native" units (each, bundle…) show as published.
+  const kg = r.kind === "kg";
+  const fmt = function (v) { return fmtPrice(kg ? displayPrice(c, v) : v); };
+  const unitWord = kg
+    ? "per " + esc(displayUnit(c))
+    : (RETAIL_UNIT_WORDS[r.unit] || "per " + esc(r.unit));
+
+  let s;
+  if (r.wide) {
+    // Outlets disagree too much for one number to be honest.
+    s = "In shops and markets it varies a lot: from " + fmt(r.cheap.price) +
+      " " + unitWord + " at " + OUTLET_NAMES[r.cheap.at] + " to " +
+      fmt(r.dear.price) + " at " + OUTLET_NAMES[r.dear.at] + ".";
+  } else if (r.cheap && r.dear) {
+    s = "In shops and markets: about " + fmt(r.price) + " " + unitWord +
+      " — from " + fmt(r.cheap.price) + " at " + OUTLET_NAMES[r.cheap.at] +
+      " to " + fmt(r.dear.price) + " at " + OUTLET_NAMES[r.dear.at] + ".";
+  } else {
+    s = "In shops and markets: about " + fmt(r.price) + " " + unitWord + ".";
+  }
+  s += " NAMDEVCO shop survey, " + monthLabel + ".";
+  if (monthsApart(summary.retail_month, summary.report_date) >= 2) {
+    s += " That’s the newest shop survey published so far.";
+  }
+  return s;
+}
+
 function matches(c) {
   if (state.category && c.category !== state.category) return false;
   if (!state.query) return true;
@@ -466,6 +522,8 @@ function toggleDetail(div, c) {
         ? " — today’s price is " + LEVEL_WORDS[c.price_level] + "."
         : ".");
   }
+  const shops = retailSentence(c);
+  if (shops) facts += " " + shops;
   detail.innerHTML =
     '<p class="facts">' + facts + "</p>" +
     '<div class="ranges" role="group" aria-label="Chart range"></div>' +

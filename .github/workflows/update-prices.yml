@@ -39,6 +39,21 @@ jobs:
       - name: Fetch any new reports
         run: python scraper/fetch_daily.py --since "$(date -d '10 days ago' +%F)"
 
+      # The retail survey is monthly and overwritten in place on NAMDEVCO's
+      # server — checking on every run is one cheap page request, and any
+      # month we miss is lost for good. A retail failure never blocks the
+      # daily wholesale update, but the follow-up annotation keeps it
+      # visible on the run summary (continue-on-error alone leaves the
+      # whole run green, which would hide a persistent breakage).
+      - name: Fetch the monthly retail survey
+        id: retail
+        continue-on-error: true
+        run: python scraper/fetch_retail.py
+
+      - name: Flag a retail fetch failure
+        if: steps.retail.outcome == 'failure'
+        run: echo "::warning::Retail survey fetch failed — see the step above. Months not captured are lost for good."
+
       - name: Commit new data and rebuild site files
         run: |
           git add data

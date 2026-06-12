@@ -1,0 +1,9 @@
+{
+  "_comment": "Bridges the retail survey's commodity base names onto the daily wholesale report's base names, both slugified (text before the first parenthesis, lowercased, non-alphanumerics to '-'). Only spellings that genuinely differ belong here; identical bases match without an entry. Verified pairs from comparing the March 2026 retail file against June 2026 daily reports.",
+  "retail_to_wholesale_base": {
+    "eddoes": "eddoe",
+    "pigeon-peas": "pigeon-pea",
+    "pimento-pepper": "pimento",
+    "mandarine": "portugal"
+  }
+}
