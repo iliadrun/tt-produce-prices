@@ -53,6 +53,32 @@ const fmtDateShort = function (iso) {
   });
 };
 
+const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTHS_LONG = ["January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"];
+
+/* Axis labels stay short so a phone-width chart fits several without
+   overlapping: "2026-06-09" -> "9 Jun", "2026-06" -> "Jun ’26". */
+function fmtAxisDate(key) {
+  const p = key.split("-");
+  if (p.length === 3) return parseInt(p[2], 10) + " " + MONTHS_SHORT[p[1] - 1];
+  return MONTHS_SHORT[p[1] - 1] + " ’" + p[0].slice(2);
+}
+
+/* Tooltips have room for the full date: "Tuesday 9 June 2026" / "June 2026". */
+function fmtTooltipDate(key) {
+  return key.split("-").length === 3
+    ? fmtDate(key)
+    : MONTHS_LONG[key.split("-")[1] - 1] + " " + key.slice(0, 4);
+}
+
+/* ~64px per "Jun ’26" label; below 4 ticks the chart stops reading as a
+   timeline, above 8 desktop labels start to touch. */
+function maxTicksFor(width) {
+  return Math.max(4, Math.min(8, Math.floor(width / 64)));
+}
+
 function init() {
   fetch("data/summary.json")
     .then(function (r) {
@@ -364,13 +390,33 @@ function drawChart(detail, c, range) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      // Recompute the tick budget when the canvas changes size (phone
+      // rotation, window resize) so labels never crowd back in.
+      onResize: function (chart, size) {
+        chart.options.scales.x.ticks.maxTicksLimit = maxTicksFor(size.width);
+      },
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { label: function (ctx) { return fmtPrice(ctx.parsed.y); } } },
+        tooltip: {
+          callbacks: {
+            title: function (items) { return fmtTooltipDate(items[0].label); },
+            label: function (ctx) { return fmtPrice(ctx.parsed.y); },
+          },
+        },
       },
       scales: {
-        x: { ticks: { maxTicksLimit: 8, maxRotation: 0 } },
-        y: { ticks: { callback: function (v) { return "$" + v; } } },
+        x: {
+          ticks: {
+            maxRotation: 0,
+            autoSkipPadding: 12,
+            maxTicksLimit: maxTicksFor(canvas.parentNode.clientWidth || 320),
+            // Category-scale callbacks receive the tick index, not the label.
+            callback: function (value) {
+              return fmtAxisDate(this.getLabelForValue(value));
+            },
+          },
+        },
+        y: { ticks: { callback: function (v) { return "$" + Number(v).toFixed(2); } } },
       },
     },
   });
