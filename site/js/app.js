@@ -53,7 +53,8 @@ function esc(value) {
   });
 }
 
-const fmtPrice = function (p) { return "TT$" + p.toFixed(2); };
+/* Bare "$" — the header tagline and footer say prices are TT dollars. */
+const fmtPrice = function (p) { return "$" + p.toFixed(2); };
 const fmtDate = function (iso) {
   return new Date(iso + "T12:00:00").toLocaleDateString("en-TT", {
     weekday: "long", day: "numeric", month: "long", year: "numeric",
@@ -275,10 +276,10 @@ function changeBadge(c) {
   // number from contradicting its own arrow. Screen readers skip the "<"
   // symbol at default verbosity, so the spoken label spells it out.
   let amt = Math.abs(displayPrice(c, c.price_change)).toFixed(2);
-  let spoken = "TT$" + amt;
+  let spoken = "$" + amt;
   if (Number(amt) === 0) {
     amt = "&lt;0.01";   // entity: amt lands in innerHTML
-    spoken = "less than TT$0.01";
+    spoken = "less than $0.01";
   }
   if (c.price_change > 0) {
     return ' <span class="chg up" role="img" aria-label="up ' + spoken +
