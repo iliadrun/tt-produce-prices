@@ -14,7 +14,19 @@ let chartJsPromise = null;
 const charts = {};           // commodity id -> Chart instance
 
 const $ = function (sel) { return document.querySelector(sel); };
-const state = { query: "", category: null };
+const state = { query: "", category: null, perLb: false };
+
+/* Retail vendors and farmers price per pound, NAMIS reports per Kg, so the
+   site can show either. Only weighed items convert — prices per bundle,
+   bag or 100's mean the same in any unit. */
+const LB_PER_KG = 2.20462;
+function isWeighed(c) { return c.unit === "Kg"; }
+function displayPrice(c, perUnit) {
+  return state.perLb && isWeighed(c) ? perUnit / LB_PER_KG : perUnit;
+}
+function displayUnit(c) {
+  return state.perLb && isWeighed(c) ? "lb" : c.unit;
+}
 
 /* Trini market names — visitors search what they call it at the market,
    the official NAMIS name wins. Keys are what people type. */
@@ -132,6 +144,38 @@ function init() {
     });
 }
 
+/* The per-Kg / per-lb segmented control. The choice is wired up before the
+   data arrives (init's fetch is still in flight) and remembered across
+   visits; localStorage can throw in private browsing, hence the try/catch. */
+function initUnitToggle() {
+  const kgBtn = $("#unit-kg");
+  const lbBtn = $("#unit-lb");
+  // A visitor can briefly get cached HTML with fresh JS right after a
+  // deploy; missing buttons must cost them the toggle, not the whole site.
+  if (!kgBtn || !lbBtn) return;
+  function setPerLb(perLb) {
+    // Re-clicking the pressed button is a no-op — without this guard it
+    // would pointlessly re-render and close every open panel.
+    if (perLb === state.perLb) return;
+    state.perLb = perLb;
+    kgBtn.setAttribute("aria-pressed", String(!perLb));
+    lbBtn.setAttribute("aria-pressed", String(perLb));
+    try { localStorage.setItem("priceUnit", perLb ? "lb" : "kg"); } catch (e) {}
+    // Re-render everything that shows a price. Open panels close; the
+    // visitor just changed how all prices read, so a redraw reads as
+    // expected, not as data loss.
+    if (summary) {
+      renderMovers();
+      renderList();
+    }
+  }
+  kgBtn.addEventListener("click", function () { setPerLb(false); });
+  lbBtn.addEventListener("click", function () { setPerLb(true); });
+  let saved = null;
+  try { saved = localStorage.getItem("priceUnit"); } catch (e) {}
+  if (saved === "lb") setPerLb(true);
+}
+
 function renderStaleNote() {
   const missed = missedMarketDays(summary.report_date);
   if (missed < 1) return;
@@ -212,7 +256,7 @@ function renderMovers() {
     const el = document.createElement("button");
     el.className = "mover";
     el.innerHTML = "<b>" + esc(c.name) + "</b>" + changeBadge(c) +
-      " " + fmtPrice(c.price) + " / " + esc(c.unit);
+      " " + fmtPrice(displayPrice(c, c.price)) + " / " + esc(displayUnit(c));
     el.addEventListener("click", function () { revealItem(c.id); });
     box.appendChild(el);
   });
@@ -227,13 +271,21 @@ function changeBadge(c) {
     }
     return "";
   }
-  const amt = Math.abs(c.price_change).toFixed(2);
+  // A real 1¢/Kg change rounds to 0.00 in lb mode; "<0.01" keeps the
+  // number from contradicting its own arrow. Screen readers skip the "<"
+  // symbol at default verbosity, so the spoken label spells it out.
+  let amt = Math.abs(displayPrice(c, c.price_change)).toFixed(2);
+  let spoken = "TT$" + amt;
+  if (Number(amt) === 0) {
+    amt = "&lt;0.01";   // entity: amt lands in innerHTML
+    spoken = "less than TT$0.01";
+  }
   if (c.price_change > 0) {
-    return ' <span class="chg up" role="img" aria-label="up TT$' + amt +
+    return ' <span class="chg up" role="img" aria-label="up ' + spoken +
       ' since last market day">▲ ' + amt + "</span>";
   }
   if (c.price_change < 0) {
-    return ' <span class="chg down" role="img" aria-label="down TT$' + amt +
+    return ' <span class="chg down" role="img" aria-label="down ' + spoken +
       ' since last market day">▼ ' + amt + "</span>";
   }
   return ' <span class="chg same" role="img" aria-label="unchanged since ' +
@@ -305,16 +357,17 @@ function renderItem(c) {
 
   let priceHtml;
   if (c.price !== null) {
-    priceHtml = '<div class="price-now">' + fmtPrice(c.price) + "</div>" +
-      '<div class="price-unit">per ' + esc(c.unit) + changeBadge(c) + "</div>" +
-      levelBadge(c);
+    priceHtml = '<div class="price-now">' + fmtPrice(displayPrice(c, c.price)) +
+      "</div>" +
+      '<div class="price-unit">per ' + esc(displayUnit(c)) + changeBadge(c) +
+      "</div>" + levelBadge(c);
   } else {
     // traded=true with no price happens: some items sell on volume with no
     // posted price that day.
     const label = c.traded ? "no price posted" : "not traded";
     priceHtml = c.last_traded
       ? '<div class="not-traded">' + label + " —<br>" +
-        fmtPrice(c.last_traded.price) + " on " +
+        fmtPrice(displayPrice(c, c.last_traded.price)) + " on " +
         fmtDateShort(c.last_traded.date) + "</div>"
       : '<div class="not-traded">' + label + " recently</div>";
   }
@@ -393,15 +446,21 @@ function toggleDetail(div, c) {
 
   const detail = document.createElement("div");
   detail.className = "detail";
+  // Whole pounds for volume: 2,503.83 Kg of tomatoes is a meaningful
+  // figure, 5,519.97 lb pretends to a precision the conversion doesn't have.
+  const vol = state.perLb && isWeighed(c)
+    ? Math.round(c.volume * LB_PER_KG)
+    : c.volume;
   let facts = c.volume !== null
-    ? "Volume today: " + c.volume.toLocaleString() + " " + esc(c.unit) + "."
+    ? "Volume today: " + vol.toLocaleString() + " " + esc(displayUnit(c)) + "."
     : "No volume recorded today.";
   if (typeof c.year_low === "number" && typeof c.year_high === "number") {
     // "Monthly averages ranged", not "prices ranged": today's daily price
     // can legitimately sit outside the band, and on ~17 of 77 items it
     // does — wording that claims a hard range would look like broken data.
     facts += " Monthly averages over the past 12 months ranged " +
-      fmtPrice(c.year_low) + "–" + fmtPrice(c.year_high) +
+      fmtPrice(displayPrice(c, c.year_low)) + "–" +
+      fmtPrice(displayPrice(c, c.year_high)) +
       (LEVEL_WORDS[c.price_level]
         ? " — today’s price is " + LEVEL_WORDS[c.price_level] + "."
         : ".");
@@ -563,13 +622,13 @@ function drawChart(detail, c, range) {
   const canvas = detail.querySelector("canvas");
   if (charts[c.id]) charts[c.id].destroy();
   detail.querySelector(".chart-note").textContent =
-    range.note + " Prices in TT$ per " + c.unit + ".";
+    range.note + " Prices in TT$ per " + displayUnit(c) + ".";
   charts[c.id] = new Chart(canvas, {
     type: "line",
     data: {
       labels: range.pts.map(function (p) { return p[0]; }),
       datasets: [{
-        data: range.pts.map(function (p) { return p[1]; }),
+        data: range.pts.map(function (p) { return displayPrice(c, p[1]); }),
         borderColor: "#1d7a46",
         backgroundColor: "rgba(29,122,70,0.08)",
         fill: true,
@@ -614,4 +673,5 @@ function drawChart(detail, c, range) {
   });
 }
 
+initUnitToggle();
 init();
