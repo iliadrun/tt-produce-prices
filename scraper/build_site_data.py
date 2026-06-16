@@ -48,6 +48,56 @@ def month_index(date_key):
     return int(date_key[:4]) * 12 + int(date_key[5:7])
 
 
+def harvest_status(volume_monthly, month):
+    """How harvested/abundant an item is in a given calendar month (1-12),
+    from its historical wholesale VOLUMES — deliberately NOT price, so a crop
+    can be in peak season yet command a premium (sorrel at Christmas: highest
+    volume of the year AND a high price). Returns:
+      "peak" — among the item's highest-volume months
+      "in"   — reliably traded this month, ordinary volume
+      "off"  — rarely harvested this month
+      None   — no volume history to judge by
+    """
+    if not volume_monthly:
+        return None
+    by_m = {m: [] for m in range(1, 13)}
+    for key, vol in volume_monthly.items():
+        by_m[int(key[5:7])].append(vol)
+    years_total = len({key[:4] for key in volume_monthly})
+    # "In season" = sold in at least half the tracked years (>=3 to ignore
+    # one-off blips), matching how the market actually carries the crop.
+    threshold = max(3, years_total * 0.5)
+    reliable = [m for m in range(1, 13) if len(by_m[m]) >= threshold]
+    if month not in reliable:
+        return "off"
+    meds = {m: median(by_m[m]) for m in reliable}
+    # Peak = top third of the item's own in-season months by typical volume.
+    peak_cut = percentile(sorted(meds.values()), 0.67)
+    return "peak" if meds[month] >= peak_cut else "in"
+
+
+# Harvest status x value band -> tier key. Harvest "peak"/"in" both count as
+# in-season; an item not trading today is handled separately ("not-at-market").
+TIER_BY = {
+    ("in", "low"): "peak-steal",
+    ("in", "typical"): "in-season",
+    ("in", "high"): "in-demand",
+    ("off", "low"): "oos-bargain",
+    ("off", "typical"): "oos-scarce",
+    ("off", "high"): "oos-scarce",
+}
+
+
+def assign_tier(harvest, value, priced):
+    """Place an item in one of the curated tiers. Not trading today -> its own
+    quiet section (you can't buy it, so it shouldn't sit among the deals)."""
+    if not priced:
+        return "not-at-market"
+    # No volume history -> it's trading today, so treat it as available.
+    in_season = harvest in ("in", "peak") or harvest is None
+    return TIER_BY[("in" if in_season else "off", value or "typical")]
+
+
 LB_PER_KG = 2.20462
 RETAIL_OUTLETS = ["farmers_markets", "municipal_markets", "vege_marts",
                   "supermarkets"]
@@ -189,6 +239,17 @@ def main():
             # chronological order is a hard requirement, not a nicety.
             monthly_by_id[cid] = dict(sorted(s["monthly_avg_price"].items()))
 
+    # Monthly VOLUMES, same bridging — these drive harvest status (when a crop
+    # is actually abundant), kept separate from price so the two can disagree.
+    volume_by_id = {}
+    vol_path = DATA_DIR / "history" / "monthly_wholesale_volume.json"
+    if vol_path.exists():
+        for s in load(vol_path)["series"]:
+            cid = aliases.get(s["commodity_id"], s["commodity_id"])
+            if cid in latest_ids:
+                volume_by_id[cid] = s["monthly_avg_volume"]
+    report_month = int(latest["report_date"][5:7])
+
     retail_month, retail_groups = load_retail()
 
     commodities = []
@@ -237,6 +298,17 @@ def main():
             shops = retail_summary(entry, rows)
             if shops:
                 entry["retail"] = shops
+        # Decoupled signals for the "Best buys" tiers: harvest status from
+        # volume (is it abundant now?) and a value band from price_level
+        # (cheap or dear vs its own recent norm). Kept apart on purpose so a
+        # peak-harvest crop can still read as premium (sorrel at Christmas).
+        harvest = harvest_status(volume_by_id.get(cid, {}), report_month)
+        value = entry.get("price_level")  # "low" | "high" | "typical" | None
+        if harvest is not None:
+            entry["harvest"] = harvest
+        if c["price"] is not None:
+            entry["value"] = value or "typical"
+        entry["tier"] = assign_tier(harvest, value, c["price"] is not None)
         commodities.append(entry)
 
     summary = {

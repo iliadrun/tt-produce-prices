@@ -14,7 +14,7 @@ let chartJsPromise = null;
 const charts = {};           // commodity id -> Chart instance
 
 const $ = function (sel) { return document.querySelector(sel); };
-const state = { query: "", category: null, perLb: false };
+const state = { query: "", category: null, perLb: false, view: "tiers" };
 
 /* Retail vendors and farmers price per pound, NAMIS reports per Kg, so the
    site can show either. Only weighed items convert — prices per bundle,
@@ -175,6 +175,64 @@ function initUnitToggle() {
   let saved = null;
   try { saved = localStorage.getItem("priceUnit"); } catch (e) {}
   if (saved === "lb") setPerLb(true);
+}
+
+/* The "Show" view toggle: Best buys (deal tiers) / By type (produce
+   category) / A–Z. Display only — it regroups the same loaded data and never
+   touches summary.commodities. Wired before the data arrives and remembered
+   across visits, like the unit toggle. */
+const VIEWS = ["tiers", "type", "name"];
+function initViewControl() {
+  const btns = { tiers: $("#view-tiers"), type: $("#view-type"), name: $("#view-az") };
+  // Cached HTML with fresh JS right after a deploy: missing buttons must cost
+  // the visitor the toggle, not the whole page.
+  if (!btns.tiers || !btns.type || !btns.name) return;
+  function paint(view) {
+    VIEWS.forEach(function (v) {
+      btns[v].setAttribute("aria-pressed", String(v === view));
+    });
+  }
+  function setView(view) {
+    if (view === state.view) return;   // no-op re-click, like the unit toggle
+    state.view = view;
+    paint(view);
+    try { localStorage.setItem("view", view); } catch (e) {}
+    if (summary) renderList();
+  }
+  VIEWS.forEach(function (v) {
+    btns[v].addEventListener("click", function () { setView(v); });
+  });
+  let saved = null;
+  try { saved = localStorage.getItem("view"); } catch (e) {}
+  if (VIEWS.indexOf(saved) !== -1) { state.view = saved; paint(saved); }
+}
+
+function byName(a, b) { return a.name.localeCompare(b.name); }
+
+/* The "Best buys" tiers, in shopper-priority order. Each commodity carries
+   its own tier key (computed in build_site_data.py from harvest volume +
+   price band); empty tiers are skipped at render time, so the page only
+   shows the tiers that actually apply this month. */
+const TIERS = [
+  { key: "peak-steal", title: "Peak-season steals",
+    blurb: "In season and priced below their usual level." },
+  { key: "in-season", title: "In season now",
+    blurb: "Freshly in season at everyday prices.", byCategory: true },
+  { key: "in-demand", title: "In season, in demand",
+    blurb: "In season but selling above their usual price." },
+  { key: "oos-bargain", title: "Out-of-season bargains",
+    blurb: "Past their local season but going cheap — often imported." },
+  { key: "oos-scarce", title: "Off-season &amp; limited",
+    blurb: "Past their local season and scarce or pricey — often imported." },
+  { key: "not-at-market", title: "Not at the market today",
+    blurb: "No price posted today; showing the last known price." },
+];
+
+/* A quiet "peak harvest" tag for the months a crop is at its most abundant
+   (top third of its own year by wholesale volume). Shown in every view so the
+   volume signal survives switching away from the tiers. */
+function peakBadge(c) {
+  return c.harvest === "peak" ? '<span class="tag-peak">peak harvest</span>' : "";
 }
 
 function renderStaleNote() {
@@ -389,6 +447,68 @@ function matches(c) {
   return false;
 }
 
+function renderItems(list, items) {
+  items.forEach(function (c) { list.appendChild(renderItem(c)); });
+}
+
+function categoryHead(text) {
+  const h = document.createElement("h2");
+  h.className = "category-head";
+  h.textContent = text;
+  return h;
+}
+
+/* "By type": the produce categories in the market's own order. */
+function renderByType(list, items) {
+  let shown = 0;
+  summary.categories.forEach(function (cat) {
+    const group = items.filter(function (c) { return c.category === cat; });
+    if (!group.length) return;
+    list.appendChild(categoryHead(cat));
+    renderItems(list, group);
+    shown += group.length;
+  });
+  return shown;
+}
+
+function tierHead(tier) {
+  const head = document.createElement("div");
+  head.className = "tier-head";
+  head.innerHTML = "<h2>" + tier.title + "</h2><p>" + tier.blurb + "</p>";
+  return head;
+}
+
+/* "Best buys": each tier in priority order, empty tiers skipped. The big
+   "in season" tier is sub-grouped by produce type for scanning; the others
+   lead with peak-harvest items, then alphabetical. */
+function renderTiers(list, items) {
+  let shown = 0;
+  TIERS.forEach(function (tier) {
+    const inTier = items.filter(function (c) { return c.tier === tier.key; });
+    if (!inTier.length) return;
+    list.appendChild(tierHead(tier));
+    if (tier.byCategory) {
+      summary.categories.forEach(function (cat) {
+        const group = inTier.filter(function (c) { return c.category === cat; });
+        if (!group.length) return;
+        const sub = document.createElement("h3");
+        sub.className = "subcat-head";
+        sub.textContent = cat;
+        list.appendChild(sub);
+        renderItems(list, group.sort(byName));
+      });
+    } else {
+      inTier.sort(function (a, b) {
+        const ap = a.harvest === "peak" ? 0 : 1, bp = b.harvest === "peak" ? 0 : 1;
+        return ap !== bp ? ap - bp : byName(a, b);
+      });
+      renderItems(list, inTier);
+    }
+    shown += inTier.length;
+  });
+  return shown;
+}
+
 function renderList() {
   const list = $("#list");
   // Charts on wiped canvases would linger in Chart.js's registry.
@@ -397,21 +517,16 @@ function renderList() {
     delete charts[id];
   });
   list.innerHTML = "";
-  let shown = 0;
-  summary.categories.forEach(function (cat) {
-    const items = summary.commodities.filter(function (c) {
-      return c.category === cat && matches(c);
-    });
-    if (!items.length) return;
-    const head = document.createElement("h2");
-    head.className = "category-head";
-    head.textContent = cat;
-    list.appendChild(head);
-    items.forEach(function (c) {
-      list.appendChild(renderItem(c));
-      shown++;
-    });
-  });
+  const visible = summary.commodities.filter(matches);
+  let shown;
+  if (state.view === "name") {
+    renderItems(list, visible.slice().sort(byName));
+    shown = visible.length;
+  } else if (state.view === "type") {
+    shown = renderByType(list, visible);
+  } else {
+    shown = renderTiers(list, visible);
+  }
   $("#empty").hidden = shown > 0;
   $("#status").textContent = shown + " item" + (shown === 1 ? "" : "s") + " shown";
 }
@@ -426,7 +541,10 @@ function renderItem(c) {
     priceHtml = '<div class="price-now">' + fmtPrice(displayPrice(c, c.price)) +
       "</div>" +
       '<div class="price-unit">per ' + esc(displayUnit(c)) + changeBadge(c) +
-      "</div>" + levelBadge(c);
+      "</div>" +
+      // In the tiers, the tier itself already says cheaper/dearer-than-usual,
+      // so the pill is redundant; the by-type and A–Z views still show it.
+      (state.view === "tiers" ? "" : levelBadge(c));
   } else {
     // traded=true with no price happens: some items sell on volume with no
     // posted price that day.
@@ -441,7 +559,7 @@ function renderItem(c) {
   div.innerHTML =
     '<button class="item-row" aria-expanded="false">' +
     '<span class="item-name"><b>' + esc(c.name) + "</b><small>" +
-    esc(c.category) + '</small></span>' +
+    esc(c.category) + '</small>' + peakBadge(c) + "</span>" +
     '<span class="item-price">' + priceHtml + "</span></button>";
 
   div.querySelector(".item-row").addEventListener("click", function () {
@@ -761,4 +879,5 @@ function drawChart(detail, c, range) {
 }
 
 initUnitToggle();
+initViewControl();
 init();
