@@ -141,12 +141,63 @@ body {
   box-shadow: inset 0 0 0 4px #fff;
 }
 
+/* ---------- "Show" view toggle (matches the unit toggle) ---------- */
+.view-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0;
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+}
+.view-toggle {
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.view-toggle button {
+  border: 0;
+  background: var(--card);
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.view-toggle button[aria-pressed="true"] { background: var(--green); color: #fff; }
+.view-toggle button:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 4px #fff;
+}
+
 .legend { color: var(--ink-soft); font-size: 0.8rem; margin: 4px 0 10px; }
 
 /* ---------- commodity list ---------- */
 .category-head {
   margin: 18px 0 8px;
   font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+}
+
+/* "Best buys" tier headings: a bold title with a one-line plain-English
+   rule beneath, so a reshuffled list reads as deliberate. */
+.tier-head { margin: 20px 0 8px; }
+.tier-head h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+.tier-head p { margin: 2px 0 0; font-size: 0.8rem; color: var(--ink-soft); }
+/* Produce-type sub-headers inside the "In season now" tier. */
+.subcat-head {
+  margin: 12px 0 6px;
+  font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -203,6 +254,20 @@ body {
 }
 .level.low { background: #e3f2e8; color: var(--green-dark); }
 .level.high { background: #fbe9e7; color: #8c2d22; }
+
+/* "peak harvest" tag in the name column. Neutral chip palette (not the
+   price pills' green/red): it marks abundance/availability, a volume fact,
+   not a cheap/dear price signal. */
+.tag-peak {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: var(--chip-bg);
+  color: var(--green-dark);
+}
 
 /* ---------- expanded detail ---------- */
 .detail { border-top: 1px solid var(--line); padding: 12px 14px; }

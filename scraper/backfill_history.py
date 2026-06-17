@@ -29,14 +29,25 @@ COL_UNIT = 1
 FIRST_MONTH_COL = 2  # January; December is col 13, Yearly Average col 14
 
 
-def _price(cell):
-    """Monthly price, or None for blank/'na'/'NA' cells."""
+def _metric_value(cell):
+    """A monthly cell value (price or volume), or None for blank/'na'/'NA'."""
     if cell.ctype == xlrd.XL_CELL_TEXT and cell.value.strip().lower() in ("na", ""):
         return None
     return _number(cell)
 
 
-def parse_history(path):
+# The price and volume workbooks share an identical layout (Commodity | Unit |
+# Jan..Dec | Yearly Average, with 'na' for missing months) — only the values
+# and the JSON field name differ. The price field name is unchanged so
+# build_site_data.py keeps reading it.
+METRICS = {
+    "price": ("monthly_avg_price", "Monthly average wholesale prices"),
+    "volume": ("monthly_avg_volume", "Monthly total wholesale volumes (Kg)"),
+}
+
+
+def parse_history(path, metric="price"):
+    field, description = METRICS[metric]
     book = xlrd.open_workbook(path)
     series = {}  # commodity_id -> series dict
     years = []
@@ -67,7 +78,8 @@ def parse_history(path):
             unit = _text(sheet.cell(r, COL_UNIT))
             if not name:
                 continue
-            months = [_price(sheet.cell(r, FIRST_MONTH_COL + m)) for m in range(12)]
+            months = [_metric_value(sheet.cell(r, FIRST_MONTH_COL + m))
+                      for m in range(12)]
             if not unit:
                 if all(p is None for p in months):
                     if name.isupper():
@@ -95,7 +107,7 @@ def parse_history(path):
                 "names": [],
                 "category": None,
                 "unit_by_year": {},
-                "monthly_avg_price": {},
+                field: {},
             })
             if name not in s["names"]:
                 s["names"].append(name)
@@ -105,32 +117,36 @@ def parse_history(path):
                 s["category"] = category
             if unit:
                 s["unit_by_year"][str(year)] = unit
-            for m, price in enumerate(months, start=1):
-                if price is not None:
-                    s["monthly_avg_price"][f"{year}-{m:02d}"] = price
+            for m, val in enumerate(months, start=1):
+                if val is not None:
+                    s[field][f"{year}-{m:02d}"] = val
 
     for s in series.values():
-        s["monthly_avg_price"] = dict(sorted(s["monthly_avg_price"].items()))
+        s[field] = dict(sorted(s[field].items()))
 
-    n_obs = sum(len(s["monthly_avg_price"]) for s in series.values())
-    return {
+    n_obs = sum(len(s[field]) for s in series.values())
+    out = {
         "market": "Norris Deonarine Northern Wholesale Market, Macoya",
-        "description": "Monthly average wholesale prices",
-        "currency": "TTD",
+        "description": description,
         "source_file": Path(path).name,
         "years_covered": [min(years), max(years)],
         "series": sorted(series.values(),
                          key=lambda s: (s["category"] or "", s["commodity_id"])),
-    }, n_obs
+    }
+    if metric == "price":
+        out["currency"] = "TTD"
+    return out, n_obs
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("xls_file", help="Path to the WS Avg PRICES workbook")
+    ap.add_argument("xls_file", help="Path to the monthly workbook")
     ap.add_argument("-o", "--output", required=True, help="Output JSON path")
+    ap.add_argument("--metric", choices=sorted(METRICS), default="price",
+                    help="Which workbook this is: price (default) or volume")
     args = ap.parse_args()
 
-    history, n_obs = parse_history(args.xls_file)
+    history, n_obs = parse_history(args.xls_file, args.metric)
 
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -138,7 +154,7 @@ def main():
     lo, hi = history["years_covered"]
     print(f"Years: {lo}-{hi}")
     print(f"Series: {len(history['series'])} commodities, "
-          f"{n_obs} monthly price points")
+          f"{n_obs} monthly {args.metric} points")
     print(f"Wrote {out}")
 
 
