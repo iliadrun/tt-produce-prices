@@ -232,7 +232,13 @@ const TIERS = [
    (top third of its own year by wholesale volume). Shown in every view so the
    volume signal survives switching away from the tiers. */
 function peakBadge(c) {
-  return c.harvest === "peak" ? '<span class="tag-peak">peak harvest</span>' : "";
+  // role="img" + aria-label so screen readers get the meaning, not a bare
+  // "peak harvest" fragment — the only badge that was missing a label. The
+  // visible word stays; the open panel carries the plain-English gloss.
+  return c.harvest === "peak"
+    ? '<span class="tag-peak" role="img" aria-label="peak harvest — ' +
+      'this crop is at its most plentiful time of year">peak harvest</span>'
+    : "";
 }
 
 function renderStaleNote() {
@@ -637,6 +643,13 @@ function toggleDetail(div, c) {
       (LEVEL_WORDS[c.price_level]
         ? " — today’s price is " + LEVEL_WORDS[c.price_level] + "."
         : ".");
+  }
+  // The "peak harvest" tag on the row is deliberately quiet; the panel is
+  // where its meaning gets spelled out in plain English (and on touch, where
+  // a hover tooltip never fires). Phrased as availability, not price.
+  if (c.harvest === "peak") {
+    facts += " It’s peak harvest right now — one of the most plentiful " +
+      "months of the year for this crop.";
   }
   const shops = retailSentence(c);
   detail.innerHTML =
