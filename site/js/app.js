@@ -458,13 +458,15 @@ function categoryHead(text) {
   return h;
 }
 
-/* "By type": the produce categories in the market's own order. */
+/* "By type": the produce categories in the market's own order, with each
+   category's items sorted alphabetically. */
 function renderByType(list, items) {
   let shown = 0;
   summary.categories.forEach(function (cat) {
     const group = items.filter(function (c) { return c.category === cat; });
     if (!group.length) return;
     list.appendChild(categoryHead(cat));
+    group.sort(byName);
     renderItems(list, group);
     shown += group.length;
   });
