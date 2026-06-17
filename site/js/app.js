@@ -130,6 +130,7 @@ function init() {
       initChips();
       renderMovers();
       renderList();
+      updateStickyOffset();   // chips are in the DOM now, so the bar's full height
       $("#search").addEventListener("input", function (e) {
         state.query = e.target.value.trim().toLowerCase();
         renderList();
@@ -239,6 +240,18 @@ function peakBadge(c) {
     ? '<span class="tag-peak" role="img" aria-label="peak harvest — ' +
       'this crop is at its most plentiful time of year">peak harvest</span>'
     : "";
+}
+
+/* Section headings pin just under the sticky search bar, so their offset has
+   to match the bar's real height — which changes when the category chips wrap
+   on a narrow phone, and again at the desktop breakpoint where the row
+   collapses to one line. Measured here and handed to the CSS as a custom
+   property; recomputed on resize. */
+function updateStickyOffset() {
+  const controls = document.querySelector(".controls");
+  if (!controls) return;
+  document.documentElement.style.setProperty(
+    "--stick-top", controls.offsetHeight + "px");
 }
 
 function renderStaleNote() {
@@ -465,11 +478,28 @@ function renderItems(list, items) {
   items.forEach(function (c) { list.appendChild(renderItem(c)); });
 }
 
-function categoryHead(text) {
+function categoryHead(text, count) {
   const h = document.createElement("h2");
   h.className = "category-head";
   h.textContent = text;
+  if (typeof count === "number") {
+    const c = document.createElement("span");
+    c.className = "count";          // CSS ::before supplies the "·" separator
+    c.textContent = count;
+    h.appendChild(c);
+  }
   return h;
+}
+
+/* One <section> per group so its heading sticks within its own bounds and
+   hands off to the next, instead of a flat list of sticky siblings all
+   stacking at the same top edge. */
+function sectionWith(head, items) {
+  const section = document.createElement("section");
+  section.className = "section";
+  section.appendChild(head);
+  renderItems(section, items);
+  return section;
 }
 
 /* "By type": the produce categories in the market's own order, with each
@@ -479,18 +509,19 @@ function renderByType(list, items) {
   summary.categories.forEach(function (cat) {
     const group = items.filter(function (c) { return c.category === cat; });
     if (!group.length) return;
-    list.appendChild(categoryHead(cat));
     group.sort(byName);
-    renderItems(list, group);
+    list.appendChild(sectionWith(categoryHead(cat, group.length), group));
     shown += group.length;
   });
   return shown;
 }
 
-function tierHead(tier) {
+function tierHead(tier, count) {
   const head = document.createElement("div");
   head.className = "tier-head";
-  head.innerHTML = "<h2>" + tier.title + "</h2><p>" + tier.blurb + "</p>";
+  head.innerHTML = "<h2>" + tier.title +
+    (typeof count === "number" ? '<span class="count">' + count + "</span>" : "") +
+    "</h2><p>" + tier.blurb + "</p>";
   return head;
 }
 
@@ -501,12 +532,11 @@ function renderTiers(list, items) {
   TIERS.forEach(function (tier) {
     const inTier = items.filter(function (c) { return c.tier === tier.key; });
     if (!inTier.length) return;
-    list.appendChild(tierHead(tier));
     inTier.sort(function (a, b) {
       const ap = a.harvest === "peak" ? 0 : 1, bp = b.harvest === "peak" ? 0 : 1;
       return ap !== bp ? ap - bp : byName(a, b);
     });
-    renderItems(list, inTier);
+    list.appendChild(sectionWith(tierHead(tier, inTier.length), inTier));
     shown += inTier.length;
   });
   return shown;
@@ -890,4 +920,5 @@ function drawChart(detail, c, range) {
 
 initUnitToggle();
 initViewControl();
+window.addEventListener("resize", updateStickyOffset);
 init();

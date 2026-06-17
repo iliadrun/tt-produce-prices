@@ -175,8 +175,27 @@ body {
 .legend { color: var(--ink-soft); font-size: 0.8rem; margin: 4px 0 10px; }
 
 /* ---------- commodity list ---------- */
+/* Each "Best buys" tier / "By type" category is its own <section> so its
+   heading can pin while you scroll that section and then hand off to the
+   next. A flat list of sticky siblings would instead pile up at one top edge. */
+.section { margin-top: 16px; }
+.section:first-child { margin-top: 6px; }
+
+/* Section headings stay in view while you scroll their items, pinned just
+   below the sticky search bar (--stick-top tracks its measured height). The
+   opaque background + hairline are what let the white item cards scroll
+   cleanly underneath; z-index sits below the search bar (5), above items. */
+.category-head,
+.tier-head {
+  position: sticky;
+  top: var(--stick-top, 96px);
+  z-index: 3;
+  margin: 0;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
 .category-head {
-  margin: 18px 0 8px;
+  padding: 6px 0 8px;
   font-size: 0.8rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -186,7 +205,7 @@ body {
 
 /* "Best buys" tier headings: a bold title with a one-line plain-English
    rule beneath, so a reshuffled list reads as deliberate. */
-.tier-head { margin: 20px 0 8px; }
+.tier-head { padding: 8px 0 10px; }
 .tier-head h2 {
   margin: 0;
   font-size: 1rem;
@@ -195,14 +214,27 @@ body {
 }
 .tier-head p { margin: 2px 0 0; font-size: 0.8rem; color: var(--ink-soft); }
 
+/* The item count beside each heading — a quiet size cue that never competes
+   with the heading. Resets the category heading's caps/tracking for digits. */
+.count {
+  font-weight: 400;
+  color: var(--ink-soft);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.count::before { content: "·"; margin: 0 0.4em; opacity: 0.6; }
+
 .item {
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   margin-bottom: 8px;
   overflow: hidden;
-  scroll-margin-top: 80px; /* keep rows clear of the sticky search bar
-                              when the movers strip scrolls to them */
+  /* Keep a revealed row (movers tap, #hash share link) clear of BOTH the
+     sticky search bar and the section heading pinned beneath it — the
+     allowance covers a two-line "Best buys" tier heading (title + blurb),
+     the tallest of the pinned headings. */
+  scroll-margin-top: calc(var(--stick-top, 96px) + 72px);
 }
 .item-row {
   display: flex;
