@@ -194,15 +194,6 @@ body {
   color: var(--ink);
 }
 .tier-head p { margin: 2px 0 0; font-size: 0.8rem; color: var(--ink-soft); }
-/* Produce-type sub-headers inside the "In season now" tier. */
-.subcat-head {
-  margin: 12px 0 6px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--ink-soft);
-}
 
 .item {
   background: var(--card);

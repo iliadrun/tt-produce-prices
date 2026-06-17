@@ -23,7 +23,7 @@ Rules learned from verifying the source data:
 
 import json
 import re
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
@@ -43,9 +43,41 @@ def percentile(sorted_vals, q):
     return sorted_vals[lo] + (sorted_vals[hi] - sorted_vals[lo]) * (pos - lo)
 
 
+def price_band(price, months, window_ok):
+    """Where `price` sits in the last 12 monthly averages, as a quartile
+    label plus the range it's judged against: ("low"|"typical"|"high",
+    year_low, year_high). Returns (None, None, None) when there's no price to
+    place or the recent window is too thin or stale to trust."""
+    if price is None or not window_ok:
+        return None, None, None
+    vals = sorted(v for _, v in months)
+    if price <= percentile(vals, 0.25):
+        level = "low"
+    elif price >= percentile(vals, 0.75):
+        level = "high"
+    else:
+        level = "typical"
+    return level, round(vals[0], 2), round(vals[-1], 2)
+
+
 def month_index(date_key):
     """Months since year 0 for a 'YYYY-MM' or 'YYYY-MM-DD' key."""
     return int(date_key[:4]) * 12 + int(date_key[5:7])
+
+
+def market_days_between(earlier_iso, later_iso):
+    """Weekdays (Mon–Fri) strictly after `earlier_iso` through `later_iso`.
+    1 means the item last sold on the previous market day; bigger numbers
+    mean a longer gap. Weekend-aware to match how the site counts missed
+    market days, so a Friday price reads as one day old on Monday."""
+    later = date.fromisoformat(later_iso)
+    days = 0
+    d = date.fromisoformat(earlier_iso) + timedelta(days=1)
+    while d <= later:
+        if d.weekday() < 5:
+            days += 1
+        d += timedelta(days=1)
+    return days
 
 
 def harvest_status(volume_monthly, month):
@@ -88,12 +120,21 @@ TIER_BY = {
 }
 
 
+# How long a no-price item keeps the tier it last earned. Crops routinely skip
+# a market day or two, and relegating one to "not at the market" over a single
+# gap buried in-season bargains that were almost certainly still in season.
+# Past this many market days the last price is too stale to keep that claim.
+GRACE_MARKET_DAYS = 3
+
+
 def assign_tier(harvest, value, priced):
-    """Place an item in one of the curated tiers. Not trading today -> its own
-    quiet section (you can't buy it, so it shouldn't sit among the deals)."""
+    """Place an item in one of the curated tiers from its harvest status and
+    value band. `priced` is whether it has an effective price — today's, or a
+    recent one kept alive by the grace window (see main); an item with neither
+    lands in its own quiet "not at the market" section."""
     if not priced:
         return "not-at-market"
-    # No volume history -> it's trading today, so treat it as available.
+    # No volume history -> it's available now, so treat it as in season.
     in_season = harvest in ("in", "peak") or harvest is None
     return TIER_BY[("in" if in_season else "off", value or "typical")]
 
@@ -283,32 +324,41 @@ def main():
             and month_index(latest["report_date"]) - month_index(months[-1][0]) <= 6
             and month_index(months[-1][0]) - month_index(months[0][0]) <= 13
         )
-        if c["price"] is not None and window_ok:
-            vals = sorted(v for _, v in months)
-            entry["year_low"] = round(vals[0], 2)
-            entry["year_high"] = round(vals[-1], 2)
-            if c["price"] <= percentile(vals, 0.25):
-                entry["price_level"] = "low"
-            elif c["price"] >= percentile(vals, 0.75):
-                entry["price_level"] = "high"
-            else:
-                entry["price_level"] = "typical"
+        # Today's price drives the visible year band and the "cheaper/costlier
+        # than usual" pill. Emitted only when there's a price today: the
+        # front-end phrases these as "today's price is …", which yesterday's
+        # price can't honestly claim.
+        level, ylow, yhigh = price_band(c["price"], months, window_ok)
+        if level is not None:
+            entry["year_low"] = ylow
+            entry["year_high"] = yhigh
+            entry["price_level"] = level
         rows = retail_groups.get(slugify(c["commodity"].split("(")[0]))
         if rows:
             shops = retail_summary(entry, rows)
             if shops:
                 entry["retail"] = shops
         # Decoupled signals for the "Best buys" tiers: harvest status from
-        # volume (is it abundant now?) and a value band from price_level
-        # (cheap or dear vs its own recent norm). Kept apart on purpose so a
-        # peak-harvest crop can still read as premium (sorrel at Christmas).
+        # volume (is it abundant now?) and a value band from price (cheap or
+        # dear vs its own recent norm). Kept apart on purpose so a peak-harvest
+        # crop can still read as premium (sorrel at Christmas).
         harvest = harvest_status(volume_by_id.get(cid, {}), report_month)
-        value = entry.get("price_level")  # "low" | "high" | "typical" | None
         if harvest is not None:
             entry["harvest"] = harvest
+        # Grace window: an item that sold within the last few market days keeps
+        # the tier it earned — scored on its last traded price — instead of
+        # dropping among the unavailable over a single missed day. Past the
+        # window, or with no recent price at all, it really isn't at the market
+        # today, so it falls to the quiet "not at the market" tier.
+        eff_price = c["price"]
+        if (eff_price is None and lt is not None
+                and market_days_between(lt["date"], latest["report_date"])
+                <= GRACE_MARKET_DAYS):
+            eff_price = lt["price"]
+        eff_level = price_band(eff_price, months, window_ok)[0]
         if c["price"] is not None:
-            entry["value"] = value or "typical"
-        entry["tier"] = assign_tier(harvest, value, c["price"] is not None)
+            entry["value"] = eff_level or "typical"
+        entry["tier"] = assign_tier(harvest, eff_level, eff_price is not None)
         commodities.append(entry)
 
     summary = {

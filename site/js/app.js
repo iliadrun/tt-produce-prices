@@ -217,7 +217,7 @@ const TIERS = [
   { key: "peak-steal", title: "Peak-season steals",
     blurb: "In season and priced below their usual level." },
   { key: "in-season", title: "In season now",
-    blurb: "Freshly in season at everyday prices.", byCategory: true },
+    blurb: "Freshly in season at everyday prices." },
   { key: "in-demand", title: "In season, in demand",
     blurb: "In season but selling above their usual price." },
   { key: "oos-bargain", title: "Out-of-season bargains",
@@ -478,32 +478,19 @@ function tierHead(tier) {
   return head;
 }
 
-/* "Best buys": each tier in priority order, empty tiers skipped. The big
-   "in season" tier is sub-grouped by produce type for scanning; the others
-   lead with peak-harvest items, then alphabetical. */
+/* "Best buys": each tier in priority order, empty tiers skipped. Every tier
+   leads with its peak-harvest items, then falls back to alphabetical. */
 function renderTiers(list, items) {
   let shown = 0;
   TIERS.forEach(function (tier) {
     const inTier = items.filter(function (c) { return c.tier === tier.key; });
     if (!inTier.length) return;
     list.appendChild(tierHead(tier));
-    if (tier.byCategory) {
-      summary.categories.forEach(function (cat) {
-        const group = inTier.filter(function (c) { return c.category === cat; });
-        if (!group.length) return;
-        const sub = document.createElement("h3");
-        sub.className = "subcat-head";
-        sub.textContent = cat;
-        list.appendChild(sub);
-        renderItems(list, group.sort(byName));
-      });
-    } else {
-      inTier.sort(function (a, b) {
-        const ap = a.harvest === "peak" ? 0 : 1, bp = b.harvest === "peak" ? 0 : 1;
-        return ap !== bp ? ap - bp : byName(a, b);
-      });
-      renderItems(list, inTier);
-    }
+    inTier.sort(function (a, b) {
+      const ap = a.harvest === "peak" ? 0 : 1, bp = b.harvest === "peak" ? 0 : 1;
+      return ap !== bp ? ap - bp : byName(a, b);
+    });
+    renderItems(list, inTier);
     shown += inTier.length;
   });
   return shown;
