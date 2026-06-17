@@ -1,7 +1,7 @@
 {
  "market": "Norris Deonarine Northern Wholesale Market, Macoya",
  "description": "Monthly total wholesale volumes (Kg)",
- "source_file": "NWMVols20062026_latest.xls",
+ "source_file": "NWMVols20062026.1780318170.xls",
  "years_covered": [
   2006,
   2026
@@ -20349,5 +20349,8 @@
     "2026-05": 43739.9
    }
   }
- ]
+ ],
+ "source_url": "https://dal2rygekk7fq.cloudfront.net/www.namdevco.com/uploads/NWMVols20062026.1780318170.xls",
+ "source_epoch": "1780318170",
+ "fetched_at": "2026-06-17T03:03:05+00:00"
 }

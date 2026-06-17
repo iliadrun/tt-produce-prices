@@ -18,10 +18,15 @@ namistt.com spreadsheets ──► scraper (Python) ──► data/ (JSON) ─�
    Norris Deonarine Northern Wholesale Market, Macoya (published weekdays,
    except public holidays) and parses it with **`parse_daily_report.py`**
    into `data/daily/YYYY-MM-DD.json`.
-2. **`scraper/backfill_history.py`** parsed NAMIS's 2006–2026 historical
-   workbook into `data/history/monthly_wholesale_avg.json` (a one-time
-   backfill). `data/commodity_aliases.json` bridges spelling differences
-   between the two sources.
+2. **`scraper/fetch_monthly_wholesale.py`** downloads NAMDEVCO's two
+   cumulative 2006–present workbooks — monthly **average prices** and
+   **total volumes** at Macoya — and parses them with
+   **`backfill_history.py`** into `data/history/monthly_wholesale_avg.json`
+   and `…_volume.json`. (namistt.com mirrors the same history but rolled its
+   copy back to 2006–2023, so namdevco.com is the source; there is no
+   namistt fallback here.) `backfill_history.py` also runs standalone to
+   ingest a hand-downloaded workbook. `data/commodity_aliases.json` bridges
+   spelling differences between the daily and monthly sources.
 3. **`scraper/fetch_retail.py`** checks NAMDEVCO's monthly retail survey
    (average shop and market prices by outlet type) and parses it with
    **`parse_retail_report.py`** into `data/retail/YYYY-MM.json`. The source
@@ -32,9 +37,11 @@ namistt.com spreadsheets ──► scraper (Python) ──► data/ (JSON) ─�
    files the website reads: `site/data/summary.json` and
    `site/data/history.json`.
 5. **`site/`** is a plain HTML/CSS/JavaScript website — no build step.
-6. **`.github/workflows/update-prices.yml`** runs steps 1, 3 and 4
-   automatically on GitHub's servers every weekday afternoon (Trinidad
-   time), commits any new data, and redeploys the site to GitHub Pages.
+6. **`.github/workflows/update-prices.yml`** runs steps 1–4 automatically on
+   GitHub's servers every weekday afternoon (Trinidad time), commits any new
+   data, and redeploys the site to GitHub Pages. The monthly price/volume
+   history is re-uploaded by NAMDEVCO only once a month, so most runs simply
+   confirm there is nothing new to fetch.
 
 ## Running it locally
 

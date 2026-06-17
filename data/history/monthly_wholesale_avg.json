@@ -1,7 +1,7 @@
 {
  "market": "Norris Deonarine Northern Wholesale Market, Macoya",
  "description": "Monthly average wholesale prices",
- "source_file": "NWMPrices20062026_latest.xls",
+ "source_file": "NWMPrices20062026.1780318154.xls",
  "years_covered": [
   2006,
   2026
@@ -20310,5 +20310,8 @@
    }
   }
  ],
- "currency": "TTD"
+ "currency": "TTD",
+ "source_url": "https://dal2rygekk7fq.cloudfront.net/www.namdevco.com/uploads/NWMPrices20062026.1780318154.xls",
+ "source_epoch": "1780318154",
+ "fetched_at": "2026-06-17T03:03:03+00:00"
 }

@@ -1,5 +1,11 @@
-"""Parse the NAMIS historical workbook of monthly average wholesale prices
+"""Parse the NAMDEVCO historical workbook of monthly average wholesale prices
 (2006-2026, one sheet per year) into a single JSON time-series file.
+
+This is the parser used both for the original one-time backfill (run by hand
+on a downloaded workbook) and by scraper/fetch_monthly_wholesale.py, which
+pulls the same NAMDEVCO workbooks automatically. namistt.com hosts a copy too,
+but as of June 2026 it had rolled back to 2006-2023, so namdevco.com is the
+authoritative source — see docs/namdevco-daily-fallback.md.
 
 Sheet layout (verified June 2026; varies slightly by year):
   - a title row, sometimes preceded by a blank row, so the header row
@@ -46,9 +52,21 @@ METRICS = {
 }
 
 
-def parse_history(path, metric="price"):
+def parse_history(source, metric="price", source_name=None):
+    """Parse a monthly workbook into a time-series dict.
+
+    `source` is either a filesystem path or the raw bytes of the workbook
+    (the live fetcher passes bytes so it never has to write the 600 KB file
+    to disk). `source_name` overrides the recorded "source_file" name; it
+    defaults to the path's filename, or a placeholder for in-memory bytes.
+    """
     field, description = METRICS[metric]
-    book = xlrd.open_workbook(path)
+    if isinstance(source, (bytes, bytearray)):
+        book = xlrd.open_workbook(file_contents=source)
+        source_name = source_name or "(in-memory workbook)"
+    else:
+        book = xlrd.open_workbook(source)
+        source_name = source_name or Path(source).name
     series = {}  # commodity_id -> series dict
     years = []
 
@@ -121,6 +139,12 @@ def parse_history(path, metric="price"):
                 if val is not None:
                     s[field][f"{year}-{m:02d}"] = val
 
+    # A workbook with no usable year sheets (corrupt or truncated download,
+    # or a format change) would otherwise blow up on min()/max() below; fail
+    # with a clear message the caller can report instead.
+    if not years:
+        raise ValueError(f"no year sheets found in {source_name}")
+
     for s in series.values():
         s[field] = dict(sorted(s[field].items()))
 
@@ -128,7 +152,7 @@ def parse_history(path, metric="price"):
     out = {
         "market": "Norris Deonarine Northern Wholesale Market, Macoya",
         "description": description,
-        "source_file": Path(path).name,
+        "source_file": source_name,
         "years_covered": [min(years), max(years)],
         "series": sorted(series.values(),
                          key=lambda s: (s["category"] or "", s["commodity_id"])),

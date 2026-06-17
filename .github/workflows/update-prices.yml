@@ -54,6 +54,21 @@ jobs:
         if: steps.retail.outcome == 'failure'
         run: echo "::warning::Retail survey fetch failed — see the step above. Months not captured are lost for good."
 
+      # The monthly wholesale price/volume history (the 2006-present averages
+      # behind the charts) is published on NAMDEVCO as two cumulative workbooks,
+      # re-uploaded once a month. Checking on every run is one cheap page
+      # request that re-uses the same market-information page as retail, and the
+      # upload epoch in the link means an unchanged month downloads nothing.
+      # A failure never blocks the daily wholesale update, but is surfaced.
+      - name: Fetch the monthly wholesale averages
+        id: monthly
+        continue-on-error: true
+        run: python scraper/fetch_monthly_wholesale.py
+
+      - name: Flag a monthly wholesale fetch failure
+        if: steps.monthly.outcome == 'failure'
+        run: echo "::warning::Monthly wholesale averages fetch failed — see the step above."
+
       - name: Commit new data and rebuild site files
         run: |
           git add data
