@@ -60,6 +60,31 @@ def price_band(price, months, window_ok):
     return level, round(vals[0], 2), round(vals[-1], 2)
 
 
+def change_is_trustworthy(price_previous, prev_recorded, ylow, yhigh):
+    """Whether a day-to-day price change is sound enough to show.
+
+    A change is only as trustworthy as the previous price it's measured
+    from, and NAMDEVCO's reports are hand-keyed: the "previous price" column
+    is occasionally mistyped — e.g. carrot was logged at $45.00/Kg on
+    16 Jun 2026 when the previous day's report (and every other report that
+    week) had it at $15.43, fabricating a $29.57 "drop" off a price that
+    never happened. We withhold the change — rather than silently correct
+    it — in two cases:
+      - Contradiction: the stated previous price disagrees with the price
+        we ourselves recorded for that same market day.
+      - Implausible: with no prior report to check against, the implied
+        previous price sits far outside the item's yearly range (½×–2×).
+    The current price is always passed through untouched; only the derived
+    change is withheld, so the board never shows a move that fights its own
+    history. Returns True (trust the change) when there's nothing to judge
+    against — we pass NAMDEVCO's data through unless we can prove it wrong."""
+    if prev_recorded is not None:
+        return abs(price_previous - prev_recorded) <= 0.01
+    if ylow is not None and yhigh is not None:
+        return ylow / 2 <= price_previous <= yhigh * 2
+    return True
+
+
 def month_index(date_key):
     """Months since year 0 for a 'YYYY-MM' or 'YYYY-MM-DD' key."""
     return int(date_key[:4]) * 12 + int(date_key[5:7])
@@ -305,8 +330,6 @@ def main():
             "volume": c["volume"],
             "traded": c["traded"],
         }
-        if c["price"] is not None and c["price_previous"] is not None:
-            entry["price_change"] = round(c["price"] - c["price_previous"], 2)
         lt = last_traded.get(cid)
         if lt and c["price"] is None:
             entry["last_traded"] = lt
@@ -333,6 +356,17 @@ def main():
             entry["year_low"] = ylow
             entry["year_high"] = yhigh
             entry["price_level"] = level
+        # Day-to-day change, but only the moves we trust. The change is no
+        # more reliable than the previous price it's measured from, and that
+        # source column is sometimes mistyped (see change_is_trustworthy). A
+        # withheld change is flagged so the front-end can stay neutral rather
+        # than imply "no previous price"; today's price is left untouched.
+        if c["price"] is not None and c["price_previous"] is not None:
+            prev_recorded = daily_series.get(cid, {}).get(latest["previous_date"])
+            if change_is_trustworthy(c["price_previous"], prev_recorded, ylow, yhigh):
+                entry["price_change"] = round(c["price"] - c["price_previous"], 2)
+            else:
+                entry["price_change_hidden"] = True
         rows = retail_groups.get(slugify(c["commodity"].split("(")[0]))
         if rows:
             shops = retail_summary(entry, rows)

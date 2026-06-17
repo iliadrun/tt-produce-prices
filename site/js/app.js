@@ -328,6 +328,14 @@ function renderMovers() {
 }
 
 function changeBadge(c) {
+  // A change the build deliberately withheld: the source's previous price
+  // contradicted our own record (or sat far outside the item's usual range),
+  // so a move computed from it would fight the chart. Stay neutral instead.
+  if (c.price_change_hidden) {
+    return ' <span class="chg same" role="img" ' +
+      'aria-label="day-to-day change hidden — the source figure looked ' +
+      'unreliable">–</span>';
+  }
   if (typeof c.price_change !== "number") {
     // Priced today but nothing to compare against (no price last market day).
     if (c.price !== null) {
