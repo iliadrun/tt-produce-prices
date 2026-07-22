@@ -11,6 +11,10 @@ Server behavior this must handle (verified June 2026):
     an Excel MIME type.
   - Reports are uploaded between roughly 11:20 and 14:30 Trinidad time
     (UTC-4), so "today's" report may simply not be up yet.
+  - Occasionally the previous day's file is uploaded under today's name
+    (seen 2026-07-22). The date inside the file is the truth: such a file
+    is discarded and the date treated like not-published, so later runs
+    keep re-checking it without failing the whole update.
 
 Usage:
   py scraper/fetch_daily.py                    # today (Trinidad time)
@@ -20,6 +24,7 @@ Usage:
 """
 
 import argparse
+import os
 import sys
 import time
 import urllib.error
@@ -54,7 +59,7 @@ def report_url(d):
 
 def fetch_report(d, force=False):
     """Fetch one date's report. Returns a status string:
-    'ok', 'cached', 'not-published', or 'error: ...'."""
+    'ok', 'cached', 'not-published', 'stale-upload: ...', or 'error: ...'."""
     raw_path = RAW_DIR / f"NDNWM_Daily_{d.isoformat()}.xls"
     json_path = DAILY_DIR / f"{d.isoformat()}.json"
     if json_path.exists() and not force:
@@ -82,6 +87,11 @@ def fetch_report(d, force=False):
 
     report = parse_daily_report(raw_path)
     if report["report_date"] != d.isoformat():
+        # Never keep a file whose own date disagrees with the URL it came
+        # from — old prices must not be stored under a newer date.
+        raw_path.unlink()
+        if report["report_date"] < d.isoformat():
+            return f"stale-upload: file still contains {report['report_date']}"
         return (f"error: file says report_date={report['report_date']}, "
                 f"expected {d.isoformat()}")
 
@@ -110,6 +120,7 @@ def main():
         dates = [today]
 
     failures = 0
+    stale_dates = []
     hit_server_last_time = False
     for d in dates:
         # Pause between consecutive server hits so a long catch-up range
@@ -121,6 +132,14 @@ def main():
         print(f"{d.isoformat()} ({d.strftime('%a')}): {status}")
         if status.startswith("error"):
             failures += 1
+        elif status.startswith("stale-upload"):
+            stale_dates.append(d.isoformat())
+    if stale_dates and os.environ.get("GITHUB_ACTIONS"):
+        # Annotate the Actions run summary so a stale upload stays visible
+        # even though it no longer fails the run.
+        print("::warning::NAMDEVCO is serving an older report under the "
+              f"file name for: {', '.join(stale_dates)}. Skipped for now; "
+              "every run re-checks until the correct file appears.")
     sys.exit(1 if failures else 0)
 
 
