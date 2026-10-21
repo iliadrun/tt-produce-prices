@@ -6,6 +6,9 @@
 name: Update prices and deploy
 
 on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/update-prices.yml"]
   schedule:
     - cron: "30 19 * * 1-5"   # 3:30 pm Trinidad time (UTC-4), Mon-Fri
     - cron: "0 11 * * 2-6"    # 7:00 am Trinidad, Tue-Sat (retry/catch-up)
