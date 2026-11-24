@@ -24,24 +24,23 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  update-and-deploy:
+  update-and-build:
     runs-on: ubuntu-latest
-    env:
+    env: &node-ca-env
       NODE_OPTIONS: --use-openssl-ca
       SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       # JavaScript actions also use this refreshed system store instead of their
       # runner-bundled Node CA list. Keep this before the first JavaScript action.
-      - name: Refresh system certificate trust
+      - &refresh-certificates
+        name: Refresh system certificate trust
         run: |
           sudo apt-get update
           sudo apt-get install --only-upgrade --yes ca-certificates
           dpkg-query -W ca-certificates
 
-      - name: Verify Node rejects compromised eMudhra chains
+      - &verify-node-trust
+        name: Verify Node rejects compromised eMudhra chains
         run: |
           node --input-type=module <<'JS'
           import tls from "node:tls";
@@ -196,6 +195,20 @@ jobs:
         with:
           path: site
 
+  deploy:
+    # Allow the uploaded artifact to become visible before Pages looks it up.
+    needs: update-and-build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    env: *node-ca-env
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - *refresh-certificates
+      - *verify-node-trust
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
